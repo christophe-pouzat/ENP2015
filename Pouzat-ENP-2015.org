@@ -1,0 +1,197 @@
+#+TITLE: Fluorescence Imaging Analysis: The Case of Calcium Transients.
+#+DATE: ENP Course: June 17 2015
+#+AUTHOR: @@latex:{\large Christophe Pouzat} \\ \vspace{0.2cm} Mathématiques Appliquées à Paris 5 (MAP5) \\ \vspace{0.2cm} Université Paris-Descartes and CNRS UMR 8145 \\ \vspace{0.2cm} \texttt{christophe.pouzat@parisdescartes.fr}@@
+#+OPTIONS: H:2
+#+EXCLUDE_TAGS: noexport
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+#+LATEX_CLASS: beamer
+#+LATEX_CLASS_OPTIONS: [presentation]
+#+BEAMER_HEADER: \setbeamercovered{invisible}
+#+BEAMER_HEADER: \AtBeginSection[]{\begin{frame}<beamer>\frametitle{Where are we ?}\tableofcontents[currentsection]\end{frame}}
+#+BEAMER_HEADER: \beamertemplatenavigationsymbolsempty
+#+STARTUP: beamer
+#+COLUMNS: %45ITEM %10BEAMER_ENV(Env) %10BEAMER_ACT(Act) %4BEAMER_COL(Col) %8BEAMER_OPT(Opt)
+
+* Introduction
+
+** Setting up =org= :noexport:
+#+BEGIN_SRC elisp :eval no-export :results silent
+  (require 'ox-beamer)
+  (setq org-beamer-outline-frame-options "")
+#+END_SRC
+
+** Setting up =Python= :noexport:
+
+The data we are going to use as illustrations were recorded by Andreas Pippow [[http://cecad.uni-koeln.de/Prof-Peter-Kloppenburg.82.0.html][Kloppenburg Lab, University of Cologne]] and are freely available in [[http://www.hdfgroup.org/HDF5/][HDF5]] format at the following URLs:
++ [[http://xtof.disque.math.cnrs.fr/data/CCD_calibration.hdf5]] for the calibration data.
++ [[http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5]] for the POMC data.  
+
+=Python 3= is used here so if you want to do the same with =Python 2= you should start with:
+
+#+BEGIN_SRC python :eval never
+from __future__ import print_function, division, unicode_literals, absolute_import
+#+END_SRC
+
+Loading the data into =Python= requires the installation of [[http://docs.h5py.org/en/latest/index.html][h5py]], a module available in the [[http://continuum.io/downloads][anaconda]] distribution.
+
+*** Loading the POMC data set in =Python=
+We start by downloading the data set on our local disk. To do that we need the =urllib= module:
+
+#+NAME: download-POMC-dataset
+#+BEGIN_SRC python :session *ENP2015* 
+from urllib.request import urlretrieve
+urlretrieve("http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5","Data_POMC.hdf5")
+#+END_SRC 
+
+#+RESULTS:
+| Data_POMC.hdf5 | <http.client.HTTPMessage | object | at | 0x7f88cf5d2f60> |
+
+=Python 2= users should type instead:
+
+#+NAME: download-POMC-dataset-Python2
+#+BEGIN_SRC python :eval never
+import urllib
+urllib.urlretrieve("http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5","Data_POMC.hdf5")
+#+END_SRC
+
+Once the data are on the local disk, they are loaded into =Python= with:
+
+#+NAME: load-POMC-dataset
+#+BEGIN_SRC python :session *ENP2015* 
+import h5py
+pomc = h5py.File("Data_POMC.hdf5","r")
+list(pomc)
+#+END_SRC
+
+#+RESULTS: load-POMC-dataset
+| stack | time |
+
+We create next variables pointing to the =time= vector and to the image =stack=:
+
+#+NAME: create-time_pomc-and-stack_pomc
+#+BEGIN_SRC python :session *ENP2015* 
+time_pomc = pomc['time'][...]
+stack_pomc = pomc['stack'][...]
+#+END_SRC
+
+#+RESULTS: create-time_pomc-and-stack_pomc
+
+We then close the file:
+
+#+NAME: close-pomc-file
+#+BEGIN_SRC python :session *ENP2015* 
+pomc.close()
+#+END_SRC
+
+#+RESULTS: close-pomc-file
+| 60 | 80 | 168 |
+
+*** loading key modules
+We are going to use the usual scientific python modules plus =SymPy=:
+
+#+NAME: load-key-modules
+#+BEGIN_SRC python :session *ENP2015*
+import numpy as np
+import matplotlib.pyplot as plt
+import sympy as sy
+#+END_SRC
+
+#+RESULTS: load-key-modules
+
+*** Some function definitions
+
+#+NAME: plotSignal-definition
+#+BEGIN_SRC python :session *ENP2015* :results silent
+def plotSignal(stack,lw=1):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    n_x, n_y, n_t = stack.shape
+    amp_min = np.min(stack)
+    amp_max = np.max(stack)
+    amp_diff = np.ptp(stack)
+    x_domain = np.arange(n_t)/n_t
+    y_domain = (0,n_y)
+    for r_idx in range(n_x):
+        for c_idx in range(n_y):
+            y_min = n_x - r_idx - 1
+            sig = stack[r_idx,c_idx,:]
+            Y = (sig-amp_min)/amp_diff + y_min
+            X = x_domain + c_idx
+            plt.plot(X,Y,lw=lw,color='black')
+            plt.ylim([0,n_y-1])
+    plt.axis('off')
+
+#+END_SRC
+
+** The variability inherent to fluorescence imaging data (1) :export:
+
+#+NAME: POMC-raw-data-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+plotSignal(stack_pomc[20:33,33:44,:],lw=1)
+plt.savefig("figs/POMC-raw-data.png")
+plt.close()
+"figs/POMC-raw-data.png"
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: POMC-raw-data-fig
+[[file:figs/POMC-raw-data.png]]
+#+END_CENTER
+
+ADU counts (raw data) from Fura-2 excited at 340 nm. Each square corresponds to a pixel. 25.05 s of data are shown. Same scale on each sub-plot. Data recorded by Andreas Pippow (Kloppenburg Lab. Cologne University).
+
+** The variability inherent to fluorescence imaging data (2) 	     :export:
+
+#+NAME: POMC-single-pixel-data-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+plt.plot(time_pomc,stack_pomc[27,39,:],lw=2)
+plt.xlabel("Time (s)",fontsize=25)
+plt.ylabel("ADU count",fontsize=25)
+plt.grid()
+plt.xlim([525,550])
+plt.savefig("figs/POMC-single-pixel-data.png")
+plt.close()
+"figs/POMC-single-pixel-data.png"
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: POMC-single-pixel-data-fig
+[[file:figs/POMC-single-pixel-data.png]]
+#+END_CENTER
+
+One of the central pixels of the previous figure.
+
+** What do we want? (1) 					     :export:
+Given the data set illustrated on the last two slides we might want to estimate parameters like:
++ the peak amplitude
++ the decay time constant(s)
++ the baseline level
++ the whole time course (strictly speaking, a function).
+
+** What do we want? (2) 					     :export:
+If we have a model linking the calcium dynamics---the time course of the free calcium concentration in the cell---to the fluorescence intensity like:
+\[\frac{\mathrm{d}Ca_t}{\mathrm{dt}} \left(1 + \kappa_{F}(Ca_t) + \kappa_{E}(Ca_t) \right) + \frac{j(Ca_t)}{v} = 0 \, , \]
+where $Ca_t$ stands for $[Ca^{2+}]_{free}$ at time t, $v$ is the volume of the neurite---within which diffusion effects can be neglected---and
+\[j(Ca_t) \equiv \gamma (Ca_t - Ca_{steady}) \, ,\]
+is the model of calcium extrusion---$Ca_{steady}$ is the steady state $[Ca^{2+}]_{free}$---
+\[\kappa_{F}(Ca_t) \equiv \frac{F_{total} \, K_{F}}{(K_{F} + Ca_t)^2} \quad \mathrm{and} \quad \kappa_{E}(Ca_t) \equiv \frac{E_{total} \, K_{E}}{(K_{E} + Ca_t)^2} \, ,\]
+where $F$ stands for the fluorophore en $E$ for the /endogenous/ buffer.
+
+** What do we want? (3) 					     :export:
+In the previous slide, assuming that the fluorophore (Fura) parameters: $F_{total}$ and $K_F$ have been calibrated, we might want to estimate:
++ the extrusion parameter: $\gamma$
++ the endogenous buffer parameters: $E_{total}$ and $K_E$
+using an equation relating measured fluorescence to calcium:
+\[Ca_t = K_{F} \, \frac{S_t - S_{min}}{S_{max} - S_t} \, ,\]
+where $S_t$ is the fluorescence (signal) measured at time $t$, $S_{min}$ and $S_{max}$ are /calibrated/ parameters corresponding respectively to the fluorescence in the absence of calcium and with saturating $[Ca^{2+}]$ (for the fluorophore).  
+
+** What do we want? (4) 					     :export:
++ The variability of our signal---meaning that under replication of our measurements /under the exact same conditions/ we wont get the exact same signal---implies that our estimated parameters will also fluctuate upon replication.
++ Formally our parameters are modeled as /random variables/ and *it is not enough to summarize a random variable by a single number*.
++ If we cannot get the full distribution function for our parameters, we want to give at least ranges within which the true value of the parameter should be found with a given probability.
++ In other words: *an analysis without confidence intervals is not an analysis*, it is strictly speaking useless since it can't be reproduced---if I say that my time constant is 25.76 ms the probability that upon replication I get again 25.76 is essentially 0; if I say that the actual time constant has a 0.95 probability to be in the interval [24,26.5], I can make a comparison with replications.
