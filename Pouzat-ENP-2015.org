@@ -17,8 +17,9 @@
 
 ** Setting up =org= :noexport:
 #+BEGIN_SRC elisp :eval no-export :results silent
-  (require 'ox-beamer)
-  (setq org-beamer-outline-frame-options "")
+(require 'ox-beamer)
+(setq org-beamer-outline-frame-options "")
+(setq py-shell-name "~/anaconda3/bin/python")
 #+END_SRC
 
 ** Setting up =Python= :noexport:
@@ -85,7 +86,6 @@ pomc.close()
 #+END_SRC
 
 #+RESULTS: close-pomc-file
-| 60 | 80 | 168 |
 
 *** loading key modules
 We are going to use the usual scientific python modules plus =SymPy=:
@@ -195,3 +195,364 @@ where $S_t$ is the fluorescence (signal) measured at time $t$, $S_{min}$ and $S_
 + Formally our parameters are modeled as /random variables/ and *it is not enough to summarize a random variable by a single number*.
 + If we cannot get the full distribution function for our parameters, we want to give at least ranges within which the true value of the parameter should be found with a given probability.
 + In other words: *an analysis without confidence intervals is not an analysis*, it is strictly speaking useless since it can't be reproduced---if I say that my time constant is 25.76 ms the probability that upon replication I get again 25.76 is essentially 0; if I say that the actual time constant has a 0.95 probability to be in the interval [24,26.5], I can make a comparison with replications.
+** A proper handling of the "variability" matters (1) :export:
+Let us consider a simple data generation model:
+\[Y_i \sim \mathcal{P}(f_i)\, , \quad i=0,1,\ldots,K \; ,\]
+where $\mathcal{P}(f_i)$ stands for the /Poisson distribution/ with parameter $f_i$ :
+\[\mathrm{Pr}\{Y_i = n\} = \frac{(f_i)^n}{n!} \exp (-f_i)\, , \quad \mathrm{for} \quad n=0,1,2,\ldots \]
+and
+\[f_i = f(\delta i| f_{\infty}, \Delta, \beta) = f_{\infty} + \Delta \, \exp (- \beta \, \delta i)\; ,\]
+\delta is a time step and $f_{\infty}$, \Delta and \beta are model parameters.
+
+** A proper handling of the "variability" matters (2) 		     :export:
+
+#+NAME: exp-relaxation-simulation-and-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+beta_true = 1.0
+f_infinite = 100
+Delta = 900
+X = np.linspace(0,5*beta_true,51)
+Theo = Delta*np.exp(-X*beta_true)+f_infinite
+np.random.seed(20061001)
+Observations = np.random.poisson(Theo)
+plt.figure(dpi=600,figsize=(10,8))
+plt.plot(X,Observations,'o')
+plt.xlabel("Time (s)",fontsize=25)
+plt.ylabel("Observations",fontsize=25)
+plt.plot(X,Theo,'r')
+plt.plot(X[[3,30]],Theo[[3,30]],'sk')
+plt.plot([X[3],X[3]],[0,Theo[3]],'--k')
+plt.plot([0,X[3]],[Theo[3],Theo[3]],'--k')
+plt.plot([X[30],X[30]],[0,Theo[30]],'--k')
+plt.plot([0,X[30]],[Theo[30],Theo[30]],'--k')
+plt.text(0.1,730,r'$y_1$',fontsize=25)
+plt.text(1.5,110,r'$y_2$',fontsize=25)
+plt.savefig("figs/mono-exp-sim.png")
+plt.close()
+"figs/mono-exp-sim.png"
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: exp-relaxation-simulation-and-fig
+[[file:figs/mono-exp-sim.png]]
+#+END_CENTER
+
+Data simulated according to the previous model. We are going to assume that $f_{\infty}$ and $\Delta$ are known and that $(t_1,y_1)$ and $(t_2,y_2)$ are given. We want to estimate $\beta$.
+
+** Two estimators (1) :export:
+We are going to consider two [[https://en.wikipedia.org/wiki/Estimator][estimators]] for $\beta$:
++ The "classical" least square estimator: \[ \tilde{\beta} = \arg \min \tilde{L}(\beta) \; ,\] where \[ \tilde{L}(\beta) = \sum_j \big( y_j - f(t_j \mid \beta) \big)^2 \; .\]
++ The least square estimator applied to the /square root/ of the data: \[\hat{\beta} = \arg \min \hat{L}(\beta) \; ,\] where \[ \hat{L}(\beta) = \sum_j \big( \sqrt{y_j} - \sqrt{f(t_j \mid \beta)} \big)^2 \; .\]
+
+** Two estimators (2) :export:
+We perform an empirical study as follows:
++ We simulate 100,000 experiments such that: \[ (Y_1,Y_2) \sim \big(\mathcal{P}(f(0.3|\beta_0), \mathcal{P}(f(3|\beta_0)\big) \; ,\] with $\beta_0=1$.
++ For each simulated pair, $(y_1,y_2)^{[k]}$ ($k=1,\ldots,10^5$), we minimize $\tilde{L}(\beta)$ and $\hat{L}(\beta)$ to obtain: $(\tilde{\beta}^{[k]},\hat{\beta}^{[k]})$.
++ We build histograms for $\tilde{\beta}^{[k]}$ and $\hat{\beta}^{[k]}$ as density estimators of our estimators.
+
+
+** Simulations with the two estimators 				   :noexport:
+
+*** Definitions of utility functions required for applying Newton's method to the first estimator
+
+We want to minimize: 
+$$\tilde{\beta} = \arg \min \tilde{L}(\beta) \; ,$$ 
+where 
+$$\tilde{L}(\beta) = \big( y_1 - f(t_1 \mid \beta) \big)^2 + \big( y_2 - f(t_2 \mid \beta) \big)^2 \; .$$
+In other words, we want the root of the derivative. We can get this derivative by hand or with the =SymPy= module. We will next use the latter.
+
+#+NAME: L_tilde-definition
+#+BEGIN_SRC python :session *ENP2015*
+x_1,x_2,y_1,y_2,Delta,beta,f_infini = sy.symbols('x_1,x_2,y_1,y_2,Delta,beta,f_infini',real=True)
+L_tilde = (y_1 - Delta*sy.exp(-beta*x_1)-f_infini)**2 + (y_2 - Delta*sy.exp(-beta*x_2)-f_infini)**2
+#+END_SRC
+
+#+RESULTS: L_tilde_definition
+
+#+NAME: G_tilde-definition
+#+BEGIN_SRC python :session *ENP2015* :exports both
+G_tilde = sy.diff(L_tilde,beta)
+G_tilde
+#+END_SRC
+
+#+RESULTS: G_tilde-definition
+: 2*Delta*x_1*(-Delta*exp(-beta*x_1) - f_infini + y_1)*exp(-beta*x_1) + 2*Delta*x_2*(-Delta*exp(-beta*x_2) - f_infini + y_2)*exp(-beta*x_2)
+
+#+NAME: G_prime_tilde-definition
+#+BEGIN_SRC python :session *ENP2015* :exports both
+G_prime_tilde = sy.diff(G_tilde,beta)
+G_prime_tilde
+#+END_SRC
+
+#+RESULTS: G_prime_tilde-definition
+: 2*Delta**2*x_1**2*exp(-2*beta*x_1) + 2*Delta**2*x_2**2*exp(-2*beta*x_2) - 2*Delta*x_1**2*(-Delta*exp(-beta*x_1) - f_infini + y_1)*exp(-beta*x_1) - 2*Delta*x_2**2*(-Delta*exp(-beta*x_2) - f_infini + y_2)*exp(-beta*x_2)
+
+We define next a "constructor" function returning the functions required to implement Newton's method:
+
+#+NAME: mk_g_dg_tilde-definition
+#+BEGIN_SRC python :session *ENP2015*
+def mk_g_dg_tilde(x_1,y_1,x_2,y_2,Delta=900,f_infini=100):
+    def g(beta):
+        return 2*Delta*x_1*(-Delta*np.exp(-beta*x_1) - \
+                            f_infini + y_1)*np.exp(-beta*x_1) + \
+                            2*Delta*x_2*(-Delta*np.exp(-beta*x_2) - \
+                                         f_infini + y_2)*np.exp(-beta*x_2)
+    def dg(beta):
+        return 2*Delta**2*x_1**2*np.exp(-2*beta*x_1) + \
+            2*Delta**2*x_2**2*np.exp(-2*beta*x_2) - \
+            2*Delta*x_1**2*(-Delta*np.exp(-beta*x_1) - \
+                            f_infini + y_1)*np.exp(-beta*x_1) - \
+                            2*Delta*x_2**2*(-Delta*np.exp(-beta*x_2) - \
+                                            f_infini + y_2)*np.exp(-beta*x_2)
+    return (g,dg)
+
+#+END_SRC
+
+#+RESULTS: mk_g_dg_tilde-definition
+
+We then create the required functions:
+
+#+NAME: assign-g_tilde-and-dg_tilde
+#+BEGIN_SRC python :session *ENP2015*
+g_tilde, dg_tilde = mk_g_dg_tilde(X[3],Observations[3],X[30],Observations[30])
+#+END_SRC
+
+#+RESULTS: assign-g_tilde-and-dg_tilde
+
+We define next a function implementing Newton's method given an initial guess, a derivative of the target function and a second derivative of the target:
+
+#+NAME: newton-definition
+#+BEGIN_SRC python :session *ENP2015*
+def newton(initial_guess,
+           target_d,
+           target_dd,
+           tolerance=1e-6,
+           iter_max=100):
+    pos = initial_guess
+    value = target_d(pos)
+    idx = 0
+    while idx <= iter_max and abs(value) > tolerance :
+        pos -= value/target_dd(pos)
+        idx += 1
+        value = target_d(pos)
+    return (pos,value,idx)
+
+#+END_SRC 
+
+#+RESULTS: newton-definition
+
+A short test:
+
+#+NAME: newton-test
+#+BEGIN_SRC python :session *ENP2015* :exports both
+newton(1.0,g_tilde,dg_tilde)
+#+END_SRC
+
+#+RESULTS: newton-test
+| 0.9776937225773807 | -4.897719918517396e-07 | 3 |
+
+*** Definitions of utility functions required for applying Newton's method to the second estimator
+
+We now want to minimize: 
+$$\hat{\beta} = \arg \min \hat{L}(\beta) \; ,$$ 
+where 
+$$\hat{L}(\beta) = \big( \sqrt{y_1} - \sqrt{f(t_1 \mid \beta)} \big)^2 + \big( \sqrt{y_2} - \sqrt{f(t_2 \mid \beta)} \big)^2 \; .$$
+We use =Sympy= since doing these calculations by hand is rather "heavy":
+
+#+NAME: l_hat-G_hat-definitions
+#+BEGIN_SRC python :session *ENP2015* :exports both
+L_hat = (sy.sqrt(y_1) - sy.sqrt(Delta*sy.exp(-beta*x_1) + f_infini))**2 + (sy.sqrt(y_2) - sy.sqrt(Delta*sy.exp(-beta*x_2) + f_infini))**2
+G_hat = sy.diff(L_hat,beta)
+G_hat
+#+END_SRC
+
+#+RESULTS: l_hat-G_hat-definitions
+: Delta*x_1*(sqrt(y_1) - sqrt(Delta*exp(-beta*x_1) + f_infini))*exp(-beta*x_1)/sqrt(Delta*exp(-beta*x_1) + f_infini) + Delta*x_2*(sqrt(y_2) - sqrt(Delta*exp(-beta*x_2) + f_infini))*exp(-beta*x_2)/sqrt(Delta*exp(-beta*x_2) + f_infini)
+
+#+NAME: G_prime_hat-definition
+#+BEGIN_SRC python :session *ENP2015* :exports both
+G_prime_hat = sy.diff(G_hat,beta)
+G_prime_hat
+#+END_SRC
+
+#+RESULTS: G_prime_hat-definition
+: Delta**2*x_1**2*(sqrt(y_1) - sqrt(Delta*exp(-beta*x_1) + f_infini))*exp(-2*beta*x_1)/(2*(Delta*exp(-beta*x_1) + f_infini)**(3/2)) + Delta**2*x_1**2*exp(-2*beta*x_1)/(2*(Delta*exp(-beta*x_1) + f_infini)) + Delta**2*x_2**2*(sqrt(y_2) - sqrt(Delta*exp(-beta*x_2) + f_infini))*exp(-2*beta*x_2)/(2*(Delta*exp(-beta*x_2) + f_infini)**(3/2)) + Delta**2*x_2**2*exp(-2*beta*x_2)/(2*(Delta*exp(-beta*x_2) + f_infini)) - Delta*x_1**2*(sqrt(y_1) - sqrt(Delta*exp(-beta*x_1) + f_infini))*exp(-beta*x_1)/sqrt(Delta*exp(-beta*x_1) + f_infini) - Delta*x_2**2*(sqrt(y_2) - sqrt(Delta*exp(-beta*x_2) + f_infini))*exp(-beta*x_2)/sqrt(Delta*exp(-beta*x_2) + f_infini)
+
+We define next the corresponding constructor function:
+
+#+NAME: mk_g_dg_hat-definition
+#+BEGIN_SRC python :session *ENP2015*
+def mk_g_dg_hat(x_1,y_1,x_2,y_2,Delta=900,f_infini=100):
+    def g(beta):
+        return Delta*x_1*(np.sqrt(y_1) - np.sqrt(Delta*np.exp(-beta*x_1) + f_infini))*np.exp(-beta*x_1)/np.sqrt(Delta*np.exp(-beta*x_1) + f_infini) + Delta*x_2*(np.sqrt(y_2) - np.sqrt(Delta*np.exp(-beta*x_2)+ f_infini))*np.exp(-beta*x_2)/np.sqrt(Delta*np.exp(-beta*x_2) +f_infini)
+    def dg(beta):
+        return Delta**2*x_1**2*(np.sqrt(y_1) - np.sqrt(Delta*np.exp(-beta*x_1) + f_infini))*np.exp(-2*beta*x_1)/(2*(Delta*np.exp(-beta*x_1) + f_infini)**(3/2)) + Delta**2*x_1**2*np.exp(-2*beta*x_1)/(2*(Delta*np.exp(-beta*x_1) + f_infini)) + Delta**2*x_2**2*(np.sqrt(y_2) - np.sqrt(Delta*np.exp(-beta*x_2) + f_infini))*np.exp(-2*beta*x_2)/(2*(Delta*np.exp(-beta*x_2) + f_infini)**(3/2)) + Delta**2*x_2**2*np.exp(-2*beta*x_2)/(2*(Delta*np.exp(-beta*x_2) + f_infini)) - Delta*x_1**2*(np.sqrt(y_1) - np.sqrt(Delta*np.exp(-beta*x_1) + f_infini))*np.exp(-beta*x_1)/np.sqrt(Delta*np.exp(-beta*x_1) + f_infini) - Delta*x_2**2*(np.sqrt(y_2) - np.sqrt(Delta*np.exp(-beta*x_2) + f_infini))*np.exp(-beta*x_2)/np.sqrt(Delta*np.exp(-beta*x_2) + f_infini)
+    return (g,dg)
+
+#+END_SRC
+
+#+RESULTS: mk_g_dg_hat-definition
+
+A little test:
+
+#+NAME: newton-test-with-g_hat
+#+BEGIN_SRC python :session *ENP2015* :exports both
+g_hat, dg_hat = mk_g_dg_hat(X[3],Observations[3],X[30],Observations[30])    
+newton(1.0,g_hat,dg_hat)
+#+END_SRC
+
+#+RESULTS: newton-test-with-g_hat
+| 1.0226210475375788 | -4.133007713846837e-09 | 3 |
+
+*** The simulation
+
+#+NAME: monoexp-relaxation-fit-simulation
+#+BEGIN_SRC python :session *ENP2015* 
+n_rep = int(1e5)
+beta_tilde = np.zeros((n_rep,3))
+beta_hat = np.zeros((n_rep,3))
+np.random.seed(20110928)
+for rep_idx in range(n_rep):
+    Y = np.random.poisson(Theo[[3,30]])
+    g_tilde, dg_tilde = mk_g_dg_tilde(X[3],Y[0],X[30],Y[1])
+    beta_tilde[rep_idx,:] = newton(1.0,g_tilde,dg_tilde)
+    g_hat, dg_hat = mk_g_dg_hat(X[3],Y[0],X[30],Y[1])    
+    beta_hat[rep_idx,:] = newton(1.0,g_hat,dg_hat)
+
+#+END_SRC
+
+#+RESULTS:
+
+We check that every simulation ended before the maximal allowed number of iteration:
+
+#+NAME: check-stopping-condition-of-simulation
+#+BEGIN_SRC python :session *ENP2015* :exports both
+(any(beta_tilde[:,2] == 100),any(beta_hat[:,2] == 100))
+#+END_SRC
+
+#+RESULTS: check-stopping-condition-of-simulation
+| False | False |
+
+** Two estimators (3) :export:
+
+#+NAME: histograms-of-estimators
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+def Ffct(beta): 
+    return 900 * np.exp(-X[[3,30]]*beta) + 100
+
+def dFfct(beta):
+    return -X[[3,30]]*900 * np.exp(-X[[3,30]]*beta)
+
+sd0 = np.sqrt((np.sum(dFfct(1.0)**2*Ffct(1.0))/np.sum(dFfct(1.0)**2)**2))
+sd1 = np.sqrt(1.0/np.sum(dFfct(1.0)**2/Ffct(1.0)))
+beta_vector = np.linspace(0.6,1.6,501)
+plt.figure(dpi=600,figsize=(10,8))
+useless_stuff = plt.hist([beta_tilde[:,0],beta_hat[:,0]],bins=50,normed=True)
+plt.xlabel(r'$\beta$',fontsize=25)
+plt.ylabel('Density',fontsize=25)
+plt.title(r'Densities of $\widetilde{\beta}$ and $\widehat{\beta}$',fontsize=25)
+plt.plot(beta_vector,np.exp(-0.5*(beta_vector-1)**2/sd0**2)/sd0/np.sqrt(2*np.pi),color='blue',lw=2)
+plt.plot(beta_vector,np.exp(-0.5*(beta_vector-1)**2/sd1**2)/sd1/np.sqrt(2*np.pi),color='green',lw=2)
+plt.savefig("figs/betas.png")
+plt.close()
+"figs/betas.png"
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: histograms-of-estimators
+[[file:figs/betas.png]]
+#+END_CENTER
+
+Both histograms are built with 50 bins. $\hat{\beta}$ is *clearly* better than $\tilde{\beta}$ since its variance is smaller. The derivation of the theoretical (large sample) densities is given in [[http://intl-jn.physiology.org/cgi/content/short/103/2/1130][Joucla et al (2010)]].
+
+* CCD camera noise 						    :export:
+
+** CCD basics 							    :export:
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.5\textwidth
+[[file:zerosept_vanVliet1998F3.png]]
+#+END_CENTER
+
+Source: L. van Vliet et col. (1998) [[http://homepage.tudelft.nl/e3q6n/publications/1998/AP98LVDSTY/AP98LVDSTY.html][Digital Fluorescence Imaging Using Cooled CCD Array Cameras]] (figure 3).
+
+** "Noise" sources in CCD (1) 					     :export:
++ The "Photon noise" or "shot noise" arises from the fact the measuring a fluorescence intensity, \lambda, implies *counting photons*---unless one changes the laws of Physics there is nothing one can do to eliminate this source of variability (improperly called "noise")---: \[\mathrm{Pr}\{N=n\} = \frac{\lambda^n}{n!} \exp -\lambda\, , \quad n \, = \, 0,1,\ldots\, , \quad \lambda > 0\; .\]
++ The "thermal noise" arises from thermal agitation which "dumps" electrons in potential wells; this "noise" also follows a Poisson distribution but it can be made negligible by /cooling down/ the camera.    
+
+** "Noise" sources in CCD (2) 					     :export:
++ The "read out noise" arises from the conversion of the number of photo-electrons into an equivalent tension; it follows a normal distribution whose variance is independent of the mean (as long as reading is not done at too high a frequency).
++ The "digitization noise" arises from the mapping of a continuous value, the tension, onto a grid; it is negligible as soon as more than 8 bit are used.
+
+** A simple CCD model (1) 					     :export:
++ We can easily obtain a simple CCD model taking into account the two main "noise" sources (photon and read-out). 
++ To get this model we are going the fact (a theorem) that when a *large number of photon are detected*, the Poisson distribution is well approximated by ([[http://en.wikipedia.org/wiki/Convergence_in_distribution#Convergence_in_distribution][converges in distribution]] to) a normal distribution with identical mean and variance: \[\mathrm{Pr}\{N=n\} = \frac{\lambda^n}{n!} \exp -\lambda \approx \mathcal{N}(\lambda,\lambda) \; .\]
++ In other words: \[ N \approx \lambda + \sqrt{\lambda} \, \epsilon \; ,\] where $\epsilon \sim \mathcal{N}(0,1)$ (follows a standard normal distribution).     
+
+** A simple CCD model (2) 					     :export:
++ A read-out noise is added next following a normal distribution with 0 mean and variance $\sigma_{R}^2$.
++ We are therefore adding to the random variable $N$ a new *independent* random variable $R \sim \mathcal{N}(0,\sigma_{R}^2)$ giving: \[M \equiv N+R \approx \lambda + \sqrt{\lambda+\sigma_{R}^2} \, \epsilon \; ,\] where the fact that the sum of two independent normal random variables is a normal random variable whose mean is the sum of the mean and whose variance is the sum of the variances has been used.
+
+** A simple CCD model (3) 					     :export:
++ Since the capacity of the photo-electron weels is finite (35000 for the camera used in the first slides) and since the number of photon-electrons will be digitized on 12 bit (4096 levels), a "gain" $G$ *smaller than one* must be applied if we want to represent faithfully (without saturation) an almost full well.
++ We therefore get: \[Y \equiv G \cdot M \approx G \, \lambda + \sqrt{G^2 \, (\lambda+\sigma_{R}^2)} \, \epsilon \; .\]
+
+** For completeness: Convergence in distribution of a Poisson toward a normal rv (1) :export:
+We use the [[http://en.wikipedia.org/wiki/Moment-generating_function][moment-generating function]] and the following theorem (/e.g./ John Rice, 2007, /Mathematical Statistics and Data Analysis/, Chap. 5, Theorem A):
++ If the moment-generating function of each element of the rv sequence $X_n$ is $m_n(t)$,
++ if the moment-generating function of the rv $X$ is $m(t)$,
++ if $m_n(t) \rightarrow m(t)$ when $n \rightarrow \infty$ for all $|t| \le b$ where $b > 0$
++ then $X_n \xrightarrow{D} X$. 
+
+** For completeness: Convergence in distribution of a Poisson toward a normal rv (2) :export:
+Lets show that:
+\[Y_n = \frac{X_n - n}{\sqrt{n}} \; , \]
+where $X_n$ follows a Poisson distribution with parameter $n$, converges in distribution towards $Z$ standard normal rv.
+
+We have:
+\[m_n(t) \equiv \mathrm{E}\left[\exp(Y_n t)\right] \; ,\]
+therefore:
+\[m_n(t) = \sum_{k=0}^{\infty} \exp\left(\frac{k-n}{\sqrt{n}}t\right) \frac{n^k}{k!} \exp(-n) \; ,\]
+
+** For completeness: Convergence in distribution of a Poisson toward a normal rv (3) :export:
+\[m_n(t) = \exp(-n) \exp(-\sqrt{n}t) \sum_{k=0}^{\infty} \frac{\left(n \exp\left(t/\sqrt{n}\right)\right)^k}{k!}\]
+\[m_n(t) = \exp\left(-n - \sqrt{n} t+ n \exp(t/\sqrt{n})\right)\]
+\[m_n(t) = \exp\left(-n - \sqrt{n} t+ n \sum_{k=0}^{\infty}  \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!}\right)\]
+\[m_n(t) = \exp\left(-n - \sqrt{n} t+ n + \sqrt{n} t + \frac{t^2}{2} + n \sum_{k=3}^{\infty}  \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!}\right)\]
+\[m_n(t) = \exp\left( \frac{t^2}{2} + n \sum_{k=3}^{\infty} \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!}\right)\]
+
+** For completeness: Convergence in distribution of a Poisson toward a normal rv (4) :export:
+We must show:
+\[n \sum_{k=3}^{\infty}\left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \rightarrow_{n \rightarrow \infty} 0 \quad \forall\ |t| \le b, \quad \text{where}
+      \quad b > 0\, ,\]
+since $\exp(-t^2/2)$ is the moment-generating function of a standard normal rv.
+But
+\[\left| n \sum_{k=3}^{\infty} \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \right| \rightarrow_{n \rightarrow \infty} 0 \quad \forall\ |t| \le b, \quad \text{where} \quad b > 0\,\]
+implies that since
+\[- \left|n \sum_{k=3}^{\infty}
+      \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \right| \le n
+    \sum_{k=3}^{\infty} 
+      \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \le \left| n
+        \sum_{k=3}^{\infty} 
+      \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \right| \, .\]
+
+** For completeness: Convergence in distribution of a Poisson toward a normal rv (5) :export:
+But for all $|t| \le b$ where $b > 0$
+\begin{displaymath}
+  \begin{array}{lcl}
+    0 \le \left| n \sum_{k=3}^{\infty}
+      \left(\frac{t}{\sqrt{n}}\right)^k \frac{1}{k!} \right| & \le & n
+    \sum_{k=3}^{\infty} 
+      \left(\frac{|t|}{\sqrt{n}}\right)^k \frac{1}{k!} \\
+      & \le & \frac{|t|^3}{\sqrt{n}} \sum_{k=0}^{\infty} 
+      \left(\frac{|t|}{\sqrt{n}}\right)^k \frac{1}{(k+3)!} \\
+      & \le & \frac{|t|^3}{\sqrt{n}} \sum_{k=0}^{\infty} 
+      \left(\frac{|t|}{\sqrt{n}}\right)^k \frac{1}{k!} \\
+      & \le & \frac{|t|^3}{\sqrt{n}}
+      \exp\left(\frac{|t|}{\sqrt{n}}\right) \rightarrow_{n \rightarrow
+      \infty} 0 \, ,
+  \end{array}
+\end{displaymath}
+which completes the proof.
