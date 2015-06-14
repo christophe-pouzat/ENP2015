@@ -794,3 +794,17 @@ plt.close()
 #+END_CENTER
 
 The first exposure of 10 ms (experiment performed by Andreas Pippow, Kloppenburg lag, Cologne University).
+
+** CCD calibration (7) 						     :export:
+
++ The data are going to be analyzed as if the $Y_{i,j,k}$ were IID, *but they were sequentially recorded*. It is therefore *strongly recommended* to check that the IID hypothesis is reasonable.
++ The small example of the next figure shows that there are no (obvious) trends.
++ We must also check the correlation function. 
+
+#+NAME: close-calibration
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+calibration.close()
+#+END_SRC
+
+#+RESULTS: close-calibration
+
