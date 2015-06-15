@@ -20,6 +20,7 @@
 (require 'ox-beamer)
 (setq org-beamer-outline-frame-options "")
 (setq py-shell-name "~/anaconda3/bin/python")
+(setq org-export-babel-evaluate nil)
 #+END_SRC
 
 ** Setting up =Python= :noexport:
@@ -45,8 +46,8 @@ from urllib.request import urlretrieve
 urlretrieve("http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5","Data_POMC.hdf5")
 #+END_SRC 
 
-#+RESULTS:
-| Data_POMC.hdf5 | <http.client.HTTPMessage | object | at | 0x7f88cf5d2f60> |
+#+RESULTS: download-POMC-dataset
+| Data_POMC.hdf5 | <http.client.HTTPMessage | object | at | 0x7f11b7bb6278> |
 
 =Python 2= users should type instead:
 
@@ -107,7 +108,7 @@ urlretrieve("http://xtof.disque.math.cnrs.fr/data/CCD_calibration.hdf5","CCD_cal
 #+END_SRC 
 
 #+RESULTS: download-Calibration-dataset
-| CCD_calibration.hdf5 | <http.client.HTTPMessage | object | at | 0x7fe62be95b00> |
+| CCD_calibration.hdf5 | <http.client.HTTPMessage | object | at | 0x7f11b7bb6048> |
 
 =Python 2= users should type instead:
 
@@ -815,13 +816,13 @@ plt.close()
 
 The first exposure of 10 ms (experiment performed by Andreas Pippow, Kloppenburg lag, Cologne University).
 
-** CCD calibration (7) 						     :export:
+** CCD calibration: Checking the assumptions (1) 		     :export:
 
 + The data are going to be analyzed as if the $Y_{i,j,k}$ were IID, *but they were sequentially recorded*. It is therefore *strongly recommended* to check that the IID hypothesis is reasonable.
 + The small example of the next figure shows that there are no (obvious) trends.
 + We must also check the correlation function. 
 
-** CCD calibration (8) 						     :export:
+** CCD calibration: Checking the assumptions (2) 		     :export:
 
 #+NAME: count-evolution-calibration-fig
 #+BEGIN_SRC python :session *ENP2015* :exports results :results file
@@ -852,14 +853,14 @@ plt.close()
 
 Counts time evolution for three neighboring pixels (10 ms exposure time).
 
-** CCD calibration (9) 						     :export:
+** CCD calibration: Checking the assumptions (3) 		     :export:
 
 + If the $Y_{i,j,k}$ are not IID we expect a more or less linear trend---due to bleaching of the dye.
 + Rather then looking at each individual pixel sequence like on the previous slide, we can fit the following linear model model to each pixel: $$Y_{i,j,k} = \beta_0 + \beta_1 k + \sigma \epsilon_{i,j}$$ where the $\epsilon_{i,j} \stackrel{IID}{\sim} \mathcal{N}(0,1)$, and check if $\beta_1$ can be reasonably considered as null; will a trend due to bleaching would give a negative $\beta_1$.
 + Without a trend, the theoretical distribution of $\hat{\beta}_1/\hat{\sigma}_{\beta_1}$, $\hat{\beta}_1$ is the estimate of $\beta_1$ and $\hat{\sigma}_{\beta_1}$ its estimated standard error, is a Student's t distribution with 98 degrees of freedom.
 + Applying this idea to the central pixel of the previous slide we get...
 
-** CCD calibration (10) 					     :export:
+** CCD calibration: Checking the assumptions (4) 		     :export:
 
 #+NAME: linear-fit-central-pixel-10ms-exposure-calibration
 #+BEGIN_SRC python :session *ENP2015* :exports none 
@@ -911,7 +912,7 @@ plt.close()
 
 We get $\hat{\beta}_1 = 0.032$ and a 95 % conf. int. for it is: $[-0.018,0.082]$.
 
-** CCD calibration (11) 					     :export:
+** CCD calibration: Checking the assumptions (5) 		     :export:
 
 #+NAME: linear_fit_stack-definition
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
@@ -964,7 +965,7 @@ We can use the fact that, under the null hypothesis (no trend): $$\hat{\beta}_1/
 
 The values at 50 and 70 ms are too large.
 
-** CCD calibration (12) 					     :export:
+** CCD calibration: Checking the assumptions (6) 		     :export:
 
 #+NAME: beta1-stats-histo-all-values-fig
 #+BEGIN_SRC python :session *ENP2015* :exports results :results file
@@ -987,6 +988,72 @@ plt.close()
 #+END_CENTER
 
 Empirical density in black, theoretical one (t with 98 df) in orange.
+
+** CCD calibration: Checking the assumptions (7) 		     :export:
+
++ We now look for potential correlations between recording from different pixels.
++ We do that by computing the empirical correlation between pixels $(i,j)$ and $(u,v)$.
++ We get the empirical mean at each pixel (for a given exposure time) that is: $\overline{Y}_{ij} = (1/K) \sum_{k=1}^K Y_{ijk}$.
++ We get the empirical variance: $S^2_{ij} =  1/(K-1) \sum_{k=1}^K (Y_{ijk}-\overline{Y}_{ij})^2$.
++ We then obtain the normalized signal or /standard score/: $N_{ijk} = (Y_{ijk}-\overline{Y}_{ij})/\sqrt{S^2_{ij}}$.
++ The correlation coefficient is then: $\rho(ij,uv) = 1/(K-1) \sum_{k=1}^K N_{ijk} N_{uvk}$.
++ Under the null hypothesis, no correlation, $\rho(ij,uv) \sim \mathcal{N}(0,1/K)$.
+ 
+** CCD calibration: Checking the assumptions (8) 		     :export:
+
+#+NAME: correlations-definition
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+def correlations(stack):
+    n_row, n_col, n_time = stack.shape
+    n_pixel = n_row*n_col
+    result = np.zeros((n_pixel*(n_pixel-1)/2,))
+    stack_score = np.copy(stack)
+    stack_score = (stack_score - stack_score.mean(2).reshape((n_row,n_col,1)))/stack_score.std(2).reshape((n_row,n_col,1))
+    idx = 0
+    for i in range(n_pixel-1):
+        for j in range(i+1,n_pixel):
+            pos1 = (i//n_col,i-(i//n_col)*n_col)
+            pos2 = (j//n_col,j-(j//n_col)*n_col)
+            coef = np.sum(stack_score[pos1[0],pos1[1],:]*stack_score[pos2[0],pos2[1],:])/n_time
+            result[idx] = coef
+            idx += 1 
+    return result
+
+#+END_SRC
+
+#+NAME: get-correlations-at-10ms
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+corr10 = correlations(calibration['10ms/stack'])
+#+END_SRC
+
+#+NAME: hist-corr10-plus-theoretical
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+from scipy.stats import norm
+plt.figure(dpi=600,figsize=(10,8))
+hist_corr10 = plt.hist(corr10,bins=100,normed=True,color='black')
+plt.xlabel(r'$\rho(ij,uv)$',fontsize=25)
+plt.ylabel('Density',fontsize=25)
+plt.title('Density of correlation coefficients at 10 ms',fontsize=25)
+plt.plot(tt/10,norm.pdf(tt/10,0,0.1),color='orange',lw=5)
+plt.savefig('figs/hist_corr10_plus_theoretical.png')
+plt.close()
+'figs/hist_corr10_plus_theoretical.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: hist-corr10-plus-theoretical
+[[file:figs/hist_corr10_plus_theoretical.png]]
+#+END_CENTER
+
+Empirical density in black, theoretical one, $\mathcal{N}(0,0.01)$, in orange.
+
+** CCD calibration: Checking the assumptions (9) 		     :export:
+
+#+NAME: systematic-correlation-coef-variance-calculation
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+var_of_corr_list = [np.var(correlations(calibration[n+'/stack'])) for n in list(calibration)]
+#+END_SRC
 
 * Clean up :noexport:
 
