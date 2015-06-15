@@ -68,6 +68,16 @@ list(pomc)
 #+RESULTS: load-POMC-dataset
 | stack | time |
 
+Information on the content of this =HDF5= file can be found in its =README= attribute:
+
+#+NAME: POMC-README-attribute
+#+BEGIN_SRC python :session *ENP2015* 
+pomc.attrs['README']
+#+END_SRC
+
+#+RESULTS: POMC-README-attribute
+: POMC data set recorded by Andreas Pippow (Kloppenburg Laboratory Cologne University, http://cecad.uni-koeln.de/Prof-Peter-Kloppenburg.82.0.html). 168 measurements performed with a CCD camera recording Fura-2 fluorescence (excitation wavelength: 340 nm). The size of the CCD chip is 60 x 80 pixels. A stimulation (depolarization induced calcium entry) comes at time 527. Details about this data set can be found in: Joucla et al (2013) Estimating background-subtracted fluorescence transients in calcium imaging experiments: A quantitative approach. Cell Calcium. 54 (2): 71-85.
+
 We create next variables pointing to the =time= vector and to the image =stack=:
 
 #+NAME: create-time_pomc-and-stack_pomc
@@ -148,6 +158,16 @@ calibration['10ms/time'].shape
 
 #+RESULTS: shape-of-time-in-calibration-dataset
 | 100 |
+
+All this information can be found in the =README= attribute of the file:
+
+#+NAME: README-attribute-calibration
+#+BEGIN_SRC python :session *ENP2015* 
+calibration.attrs['README']
+#+END_SRC
+
+#+RESULTS: README-attribute-calibration
+: Imago/SensiCam CCD camera (Till Photonics) calibration data set. Fluorescence measurments were made using a fluorescent plastic slide. 10 exposure times from 10 to 100 ms (each making an HDF5 group) were used. For each exposure time 100 exposures were performed (with 200 ms between each). The fluorescence measured in each of the 60 x 80 pixels of the camera are stored in the stack data set of each group. The time data set (a vector) of each group contains the time at which each illumination was done. These recordings were done by Andreas Pippow (Kloppenburg Laboratory Cologne University, http://cecad.uni-koeln.de/Prof-Peter-Kloppenburg.82.0.html). They were used in: Sébastien Joucla, Andreas Pippow, Peter Kloppenburg and Christophe Pouzat (2010) Quantitative estimation of calcium dynamics from ratiometric measurements: A direct, non-ratioing, method. Journal of Neurophysiology 103: 1130-1144.
 
 *** loading key modules
 We are going to use the usual scientific python modules plus =SymPy=:
@@ -800,6 +820,147 @@ The first exposure of 10 ms (experiment performed by Andreas Pippow, Kloppenburg
 + The data are going to be analyzed as if the $Y_{i,j,k}$ were IID, *but they were sequentially recorded*. It is therefore *strongly recommended* to check that the IID hypothesis is reasonable.
 + The small example of the next figure shows that there are no (obvious) trends.
 + We must also check the correlation function. 
+
+** CCD calibration (8) 						     :export:
+
+#+NAME: count-evolution-calibration-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+plt.subplot(311)
+plt.plot(calibration['10ms/stack'][31,41,:])
+plt.ylabel("ADU",fontsize=25)
+plt.grid()
+plt.subplot(312)
+plt.plot(calibration['10ms/stack'][31,40,:])
+plt.ylabel("ADU",fontsize=25)
+plt.grid()
+plt.subplot(313)
+plt.plot(calibration['10ms/stack'][31,39,:])
+plt.xlabel("Time (1 unit = 100 ms)",fontsize=25)
+plt.ylabel("ADU",fontsize=25)
+plt.grid()
+plt.savefig("figs/evolution1.png")
+plt.close()
+"figs/evolution1.png"
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: count-evolution-calibration-fig
+[[file:figs/evolution1.png]]
+#+END_CENTER
+
+Counts time evolution for three neighboring pixels (10 ms exposure time).
+
+** CCD calibration (9) 						     :export:
+
++ If the $Y_{i,j,k}$ are not IID we expect a more or less linear trend---due to bleaching of the dye.
++ Rather then looking at each individual pixel sequence like on the previous slide, we can fit the following linear model model to each pixel: $$Y_{i,j,k} = \beta_0 + \beta_1 k + \sigma \epsilon_{i,j}$$ where the $\epsilon_{i,j} \stackrel{IID}{\sim} \mathcal{N}(0,1)$, and check if $\beta_1$ can be reasonably considered as null; will a trend due to bleaching would give a negative $\beta_1$.
++ Without a trend, the theoretical distribution of $\hat{\beta}_1/\hat{\sigma}_{\beta_1}$, $\hat{\beta}_1$ is the estimate of $\beta_1$ and $\hat{\sigma}_{\beta_1}$ its estimated standard error, is a Student's t distribution with 98 degrees of freedom.
++ Applying this idea to the central pixel of the previous slide we get...
+
+** CCD calibration (10) 					     :export:
+
+#+NAME: linear-fit-central-pixel-10ms-exposure-calibration
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+D_matrix = np.transpose(np.array([np.ones(100),np.arange(100)]))
+P_matrix = np.solve(np.dot(np.transpose(D_matrix),D_matrix),np.transpose(D_matrix))
+Y = calibration['10ms/stack'][31,40,:]
+beta = np.dot(P_matrix,Y)
+beta[1]
+#+END_SRC
+
+#+RESULTS: linear-fit-central-pixel-10ms-exposure-calibration
+: 0.0320432043204
+
+#+NAME: linear-fit-central-pixel-10ms-exposure-calibration-var-estimate
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+Y_hat = np.dot(D_matrix,beta)
+s2_hat = np.sum((Y-Y_hat)**2)/98
+beta_se = np.sqrt(s2_hat*np.linalg.inv(np.dot(np.transpose(D_matrix),D_matrix)))
+beta_se[1,1]
+#+END_SRC
+
+#+RESULTS: linear-fit-central-pixel-10ms-exposure-calibration-var-estimate
+: 0.0251634374132
+
+#+NAME: linear-fit-central-pixel-10ms-exposure-calibration-95-confint-beta1
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+from scipy.stats import t
+(beta[1]-beta_se[1,1]*t.ppf(0.975,98),beta[1]+beta_se[1,1]*t.ppf(0.975,98))
+#+END_SRC
+
+#+RESULTS: linear-fit-central-pixel-10ms-exposure-calibration-95-confint-beta1
+| -0.017892818267477018 | 0.08197922690833792 |
+
+#+NAME: count-evolution-linear-fit-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+plt.plot(X[:,1],Y,lw=2,color='black')
+plt.grid()
+plt.xlabel("Time (1 unit = 100 ms)",fontsize=25)
+plt.ylabel("ADU",fontsize=25)
+plt.plot(X[:,1],Y_hat,lw=2,color='red')
+plt.savefig("figs/evolution1_fit.png")
+plt.close()
+"figs/evolution1_fit.png"
+#+END_SRC
+
+#+RESULTS: count-evolution-linear-fit-fig
+[[file:figs/evolution1_fit.png]]
+
+We get $\hat{\beta}_1 = 0.032$ and a 95 % conf. int. for it is: $[-0.018,0.082]$.
+
+** CCD calibration (11) 					     :export:
+
+#+NAME: linear_fit_stack-definition
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+def linear_fit_stack(stack):
+    I,J,K = stack.shape
+    D_matrix = np.transpose(np.array([np.ones(K),np.arange(K)]))
+    P_matrix = np.linalg.solve(np.dot(np.transpose(D_matrix),D_matrix),np.transpose(D_matrix))
+    the_inv = np.linalg.inv(np.dot(np.transpose(D_matrix),D_matrix))[1,1]
+    res = np.zeros((I,J))
+    for i in range(I):
+        for j in range(J):
+            beta = np.dot(P_matrix,stack[i,j,:])
+            Y_hat = np.dot(D_matrix,beta)
+            s2_hat = np.sum((stack[i,j,:]-Y_hat)**2)/(K-2)
+            res[i,j] = beta[1]/np.sqrt(s2_hat*the_inv)
+    return res
+
+#+END_SRC
+
+#+NAME: beta1-stats-on-stack-list
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+b1stats = [linear_fit_stack(calibration[n+'/stack']) for n in list(calibration)]
+#+END_SRC
+
+#+NAME: beta1-stats-sorted-on-stack-list
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+[plt.plot(t.ppf(np.arange(1,len(b1s)+1)/len(b1s),98), b1s, lw=2, color='red') for b1s in [np.sort(b1.flatten()) for b1 in b1stats]]
+plt.plot([-4,4],[-4,4],color='black',lw=2)
+plt.show()
+#+END_SRC
+
+We can use the fact that, under the null hypothesis (no trend): $$\hat{\beta}_1/\hat{\sigma}_{\beta_1} \sim t_{98}$$ by constructing the empirical cumulative distribution function (ECDF) of the 60 x 80 pixels at each exposure time to get the maximal difference (in absolute value) with the theoretical CDF to apply a Kolmogorov test. The critical value of the latter for a 99% level and a sample size of 100 is *0.163*. We get the following values: 
+#+BEGIN_SRC python :session *ENP2015* :exports results
+[(n, int(1000*np.max(np.abs(np.arange(1,len(b1s)+1)/len(b1s)-t.cdf(b1s,98))))/1000) for n, b1s in zip(list(calibration),[np.sort(b1.flatten()) for b1 in b1stats])]
+#+END_SRC
+
+#+RESULTS:
+| 100ms |  0.09 |
+| 10ms  | 0.089 |
+| 20ms  | 0.116 |
+| 30ms  | 0.058 |
+| 40ms  | 0.135 |
+| 50ms  | 0.209 |
+| 60ms  | 0.041 |
+| 70ms  | 0.178 |
+| 80ms  | 0.153 |
+| 90ms  |  0.07 |
+
+* Clean up :noexport:
 
 #+NAME: close-calibration
 #+BEGIN_SRC python :session *ENP2015* :exports none 
