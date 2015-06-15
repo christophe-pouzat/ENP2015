@@ -856,8 +856,8 @@ Counts time evolution for three neighboring pixels (10 ms exposure time).
 ** CCD calibration: Checking the assumptions (3) 		     :export:
 
 + If the $Y_{i,j,k}$ are not IID we expect a more or less linear trend---due to bleaching of the dye.
-+ Rather then looking at each individual pixel sequence like on the previous slide, we can fit the following linear model model to each pixel: $$Y_{i,j,k} = \beta_0 + \beta_1 k + \sigma \epsilon_{i,j}$$ where the $\epsilon_{i,j} \stackrel{IID}{\sim} \mathcal{N}(0,1)$, and check if $\beta_1$ can be reasonably considered as null; will a trend due to bleaching would give a negative $\beta_1$.
-+ Without a trend, the theoretical distribution of $\hat{\beta}_1/\hat{\sigma}_{\beta_1}$, $\hat{\beta}_1$ is the estimate of $\beta_1$ and $\hat{\sigma}_{\beta_1}$ its estimated standard error, is a Student's t distribution with 98 degrees of freedom.
++ Rather then looking at each individual pixel sequence like on the previous slide, we can fit the following linear model model to each pixel: $$Y_{i,j,k} = \beta_0 + \beta_1 k + \sigma \epsilon_{i,j}$$ where the $\epsilon_{i,j} \stackrel{IID}{\sim} \mathcal{N}(0,1)$, and check if $\beta_1$ can be reasonably considered as null; while a trend due to bleaching would give a negative $\beta_1$.
++ Without a trend, the theoretical distribution of $\hat{\beta}_1/\hat{\sigma}_{\beta_1}$---$\hat{\beta}_1$ is the estimate of $\beta_1$ and $\hat{\sigma}_{\beta_1}$ its estimated standard error---is a Student's t distribution with 98 degrees of freedom.
 + Applying this idea to the central pixel of the previous slide we get...
 
 ** CCD calibration: Checking the assumptions (4) 		     :export:
@@ -1054,6 +1054,28 @@ Empirical density in black, theoretical one, $\mathcal{N}(0,0.01)$, in orange.
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
 var_of_corr_list = [np.var(correlations(calibration[n+'/stack'])) for n in list(calibration)]
 #+END_SRC
+
+The empirical variance (x 100 and rounded to the third decimal) of the samples of correlation coefficients (1 sample per exposure duration) are:
+
+#+NAME: var-corr-coef-first-half
+#+BEGIN_SRC python :session *ENP2015* :exports results
+[[n for n in list(calibration)[:5]], [int(100000*v)/1000 for v in var_of_corr_list[:5]]]
+#+END_SRC
+
+#+RESULTS: var-corr-coef-first-half
+| 100ms | 10ms |  20ms | 30ms | 40ms |
+| 1.009 | 1.01 | 1.009 | 1.01 | 1.01 |
+
+#+NAME: var-corr-coef-second-half
+#+BEGIN_SRC python :session *ENP2015* :exports results
+[[n for n in list(calibration)[5:]], [int(100000*v)/1000 for v in var_of_corr_list[5:]]]
+#+END_SRC
+
+#+RESULTS: var-corr-coef-second-half
+| 50ms |  60ms | 70ms |  80ms |  90ms |
+| 1.01 | 1.009 | 1.01 | 1.009 | 1.009 |
+
+*Overall our IID modeling assumption is met with perhaps the exceptions of the 50 and 70 ms exposure times for the drift.*
 
 * Clean up :noexport:
 
