@@ -944,21 +944,49 @@ plt.show()
 #+END_SRC
 
 We can use the fact that, under the null hypothesis (no trend): $$\hat{\beta}_1/\hat{\sigma}_{\beta_1} \sim t_{98}$$ by constructing the empirical cumulative distribution function (ECDF) of the 60 x 80 pixels at each exposure time to get the maximal difference (in absolute value) with the theoretical CDF to apply a Kolmogorov test. The critical value of the latter for a 99% level and a sample size of 100 is *0.163*. We get the following values: 
+#+NAME: beta1-Kolmogorov-statistic-first-half
 #+BEGIN_SRC python :session *ENP2015* :exports results
-[(n, int(1000*np.max(np.abs(np.arange(1,len(b1s)+1)/len(b1s)-t.cdf(b1s,98))))/1000) for n, b1s in zip(list(calibration),[np.sort(b1.flatten()) for b1 in b1stats])]
+[[n for n in list(calibration)[:5]], [int(1000*np.max(np.abs(np.arange(1,len(b1s)+1)/len(b1s)-t.cdf(b1s,98))))/1000 for b1s in [np.sort(b1.flatten()) for b1 in b1stats[:5]]]]
 #+END_SRC
 
-#+RESULTS:
-| 100ms |  0.09 |
-| 10ms  | 0.089 |
-| 20ms  | 0.116 |
-| 30ms  | 0.058 |
-| 40ms  | 0.135 |
-| 50ms  | 0.209 |
-| 60ms  | 0.041 |
-| 70ms  | 0.178 |
-| 80ms  | 0.153 |
-| 90ms  |  0.07 |
+#+RESULTS: beta1-Kolmogorov-statistic-first-half
+| 100ms |  10ms |  20ms |  30ms |  40ms |
+|  0.09 | 0.089 | 0.116 | 0.058 | 0.135 |
+
+#+NAME: beta1-Kolmogorov-statistic-second-half
+#+BEGIN_SRC python :session *ENP2015* :exports results
+[[n for n in list(calibration)[5:]], [int(1000*np.max(np.abs(np.arange(1,len(b1s)+1)/len(b1s)-t.cdf(b1s,98))))/1000 for b1s in [np.sort(b1.flatten()) for b1 in b1stats[5:]]]]
+#+END_SRC
+
+#+RESULTS: beta1-Kolmogorov-statistic-second-half
+|  50ms |  60ms |  70ms |  80ms | 90ms |
+| 0.209 | 0.041 | 0.178 | 0.153 | 0.07 |
+
+The values at 50 and 70 ms are too large.
+
+** CCD calibration (12) 					     :export:
+
+#+NAME: beta1-stats-histo-all-values-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+tt = np.linspace(-4,4,501)
+plt.figure(dpi=600,figsize=(10,8))
+junk = plt.hist(np.concatenate([b1.flatten() for b1 in b1stats]),bins=100,normed=True,color='black')
+plt.xlabel(r'$\hat{\beta}_1/\hat{\sigma}_{\beta_1}$',fontsize=25)
+plt.ylabel('Density',fontsize=25)
+plt.title(r'Density of all $\hat{\beta}_1/\hat{\sigma}_{\beta_1}$',fontsize=25)
+plt.plot(tt,t.pdf(tt,98),color='orange',lw=5)
+plt.savefig('figs/hist_beta1_stats_all.png')
+plt.close()
+'figs/hist_beta1_stats_all.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: beta1-stats-histo-all-values-fig
+[[file:figs/hist_beta1_stats_all.png]]
+#+END_CENTER
+
+Empirical density in black, theoretical one (t with 98 df) in orange.
 
 * Clean up :noexport:
 
