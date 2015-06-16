@@ -1317,8 +1317,19 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 ** Pointwise time course estimation (2) 			     :export:
 
 + We need to add a constraint since with our model specification: \[S_{i,j,k} = \phi_{i,j} \, f_k + b \; ,\] we can multiply all the $\phi_{i,j}$ by 2 and divide all the $f_k$ by 2 and get the same prediction.
-+ We are going to set $f_1=1$ and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S(1)$ through: \[\Delta S(t) / S(1) = \frac{S(t) - S(1)}{S(1)} = f(t) - 1 + \mathrm{noise}\].
++ We are going to set $f_k=1$ for the first 5 time points (the stimulation comes at the 11th) and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S_0$ (where $S_0$ is a baseline average) through: \[\Delta S(t) / S_0 = \frac{S(t) - S_0}{S_0} = f(t) - 1 + \mathrm{noise}\].
 + *Notice that no independent background measurement is used*.
+
+** Pointwise time course estimation (3) 			     :export:
++ With variance stabilization we end up minimizing: \[RSS\left(b,(\phi_{i,j}),(f_k)_{k=5,\ldots,168}\right) = \sum_{(i,j) \in \mathrm{ROI}} \sum_{k=1}^{168} \left(Z_{ijk}-F_{ijk}\right)^2 \, ,\] where \[Z_{ijk} = 2*\sqrt{ADU_{ijk}/\hat{G}+\hat{\sigma}_R^2}\] and \[F_{ijk} = 2*\sqrt{\phi_{i,j} \, f_k + b + \hat{\sigma}_R^2}\, .\]
++ If our model is correct we should have: \[RSS\left(\hat{b},(\hat{\phi}_{i,j}),(\hat{f}_k)_{k=5,\ldots,168}\right) \sim \chi^2_{12 \times 168 - 176}\, .\]
++ The method also generates confidence intervals for the estimated parameters.
+
+** Pointwise time course estimation (4): Technical details 	     :export:
++ To solve this 176 dimensional optimization problem in a reasonable time (< 10 s) in =Python= we use Newton's method with conjugate gradients for the inversion of the Hessian matrix.
++ That means we have to define a function returning the gradient---vector of first derivatives---and the Hessian---matrix of second derivatives---of the =RSS= we just defined (*that's a painful work*).
++ To improve numerical behavior, since all parameters are positive, we work with the log of the parameters.
++ Giving all the details would be at least as long as the present talk, but they are fully disclosed in the source file of this talk that can be found on Github: [[https://github.com/christophe-pouzat/ENP2015]].
 
 ** Doing the fit :noexport:
 
@@ -1591,23 +1602,23 @@ def hess_num(fct=rss0,
 
 #+NAME: values-at-initial-guess-and-tests
 #+BEGIN_SRC python :session *ENP2015* :exports none :results output
-print(rss0(np.log(par_0)))
 g0 = grad0(np.log(par_0))
 g0n = grad_num(rss0,np.log(np.copy(par_0)))
-print(np.max(np.abs(g0-g0n)/np.abs(g0)))
 h0 = hess0(np.log(par_0))
 h0n = hess_num(rss0,np.log(np.copy(par_0)),delta=1e-3)
 not_zero = np.abs(h0) > 0.
+print(rss0(np.log(par_0)))
+print(np.max(np.abs(g0-g0n)/np.abs(g0)))
 print(np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero])))
 #+END_SRC
 
 #+RESULTS: values-at-initial-guess-and-tests
+: 
+: 
+: 
+: 
 : 17547562.449
-: 
-: 
 : 5.89580034732e-08
-: 
-: 
 : 0.149133423179
 
 
@@ -1625,18 +1636,19 @@ res = minimize(rss0,np.log(par_0),method='Newton-CG',jac=grad0,hess=hess0,option
 :          Gradient evaluations: 1545
 :          Hessian evaluations: 592
 
-#+BEGIN_SRC python :session *ENP2015* :exports none
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
 def mk_pred(p_vector,
             log_scale=False,
             stabilise_var=True,
             S2=S2_hat0,
-            G=G_hat0):
+            G=G_hat0,
+            base_length=5):
     if log_scale:
         p_vector = np.exp(p_vector)
     phi = p_vector[1:13]
     b = p_vector[0]
-    f = np.ones((len(p_vector)-12,))
-    f[1:] = p_vector[13:]
+    f = np.ones((168,))
+    f[base_length:] = p_vector[13:]
     pred = np.outer(phi,f)+b
     if stabilise_var:
         return 2*np.sqrt(pred+S2)
@@ -1645,8 +1657,126 @@ def mk_pred(p_vector,
 
 #+END_SRC
 
-#+RESULTS:
-: 167
+** Pointwise time course estimation (5): Time course estimate 	     :export:
+
+#+NAME: time-course-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+f_hat = np.zeros((168,))
+f_hat[5:] = res.x[13:]
+hOn = hess_num(rss0,np.copy(res.x),delta=1e-3)
+par_se = np.sqrt(np.diag(scipy.linalg.inv(hOn)))
+#par_se = np.sqrt(np.diag(scipy.linalg.inv(hess0(res.x))))
+f_up = np.zeros((168,))
+f_up[5:] = res.x[13:] + 1.96*par_se[13:]
+f_low = np.zeros((168,))
+f_low[5:] = res.x[13:] - 1.96*par_se[13:]
+fig, ax = plt.subplots(dpi=600,figsize=(10,8))
+#fig, ax = plt.subplots()
+ax.fill_between(np.arange(168)*0.15,np.exp(f_low),np.exp(f_up),facecolor='grey',edgecolor='grey')
+ax.plot(np.arange(168)*0.15,np.exp(f_hat),lw=1,color='red')
+plt.grid()
+plt.xlabel('Time (s)',fontsize=25)
+plt.ylabel(r'$\hat{f}_k$',fontsize=25)
+plt.xlim([0,25])
+plt.savefig('figs/time-course-fit.png')
+plt.close()
+'figs/time-course-fit.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: time-course-fig
+[[file:figs/time-course-fit.png]]
+#+END_CENTER
+
+** Pointwise time course estimation (6): Data and fit 		     :export:
+
+#+NAME: data-and-fit-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+pred = mk_pred(res.x,True,True)
+the_range = [np.min(data4fit),np.max(data4fit)]
+plt.figure(dpi=600,figsize=(10,8))
+plt.subplot(341)
+plt.plot(np.arange(168)*0.15,pred[0,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[0,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(342)
+plt.plot(np.arange(168)*0.15,pred[1,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[1,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(343)
+plt.plot(np.arange(168)*0.15,pred[2,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[2,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(344)
+plt.plot(np.arange(168)*0.15,pred[3,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[3,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(345)
+plt.plot(np.arange(168)*0.15,pred[4,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[4,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(346)
+plt.plot(np.arange(168)*0.15,pred[5,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[5,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(347)
+plt.plot(np.arange(168)*0.15,pred[6,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[6,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(348)
+plt.plot(np.arange(168)*0.15,pred[7,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[7,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(349)
+plt.plot(np.arange(168)*0.15,pred[8,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[8,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(3,4,10)
+plt.plot(np.arange(168)*0.15,pred[9,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[9,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(3,4,11)
+plt.plot(np.arange(168)*0.15,pred[10,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[10,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.subplot(3,4,12)
+plt.plot(np.arange(168)*0.15,pred[11,:],color='red')
+plt.plot(np.arange(168)*0.15,data4fit[11,:],color='black')
+plt.xlim([0,25])
+plt.ylim(the_range)
+plt.savefig('figs/data-and-fit.png')
+plt.close()
+'figs/data-and-fit.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: data-and-fit-fig
+[[file:figs/data-and-fit.png]]
+#+END_CENTER
+
+Data and fit after variance stabilization. The =RSS= is 1976 giving a probability of 0.986 (a bit large).
+
+** Thanks :export:
+This work was done in collaboration with:
++ Sebastien Joucla
++ Romain Franconville
++ Andeas Pippow
++ Peter Kloppenburg
+
+Thank you for your attention!
 
 * Clean up :noexport:
 
