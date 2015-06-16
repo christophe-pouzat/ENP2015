@@ -1320,7 +1320,91 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 + We are going to set $f_1=1$ and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S(1)$ through: \[\Delta S(t) / S(1) = \frac{S(t) - S(1)}{S(1)} = f(t) - 1 + \mathrm{noise}\].
 + *Notice that no independent background measurement is used*.
 
-** Pointwise time course estimation (3) 			     :export:
+** Doing the fit :noexport:
+
+We start by defining a symbolic "unitary" rss:
+
+#+NAME: rss_u-definition
+#+BEGIN_SRC python :session *ENP2015*
+y_k,logphi_i,logf_k,logb_sy,S2_L = sy.symbols('y_k,logphi_i,logf_k,logb_sy,S2_L',real=True)
+rss_u = (y_k - 2*sy.sqrt(sy.exp(logphi_i)*sy.exp(logf_k)+sy.exp(logb_sy)+S2_L))**2
+rss_u
+#+END_SRC
+
+#+RESULTS: rss_u-definition
+: (y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))**2
+
+#+NAME: d_rss_u_d_logb_sy-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.diff(rss_u,logb_sy)
+#+END_SRC
+
+#+RESULTS: d_rss_u_d_logb_sy-definition
+: -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logb_sy)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
+
+#+NAME: d_rss_u_d_logphi_i-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.diff(rss_u,logphi_i)
+#+END_SRC
+
+#+RESULTS: d_rss_u_d_logphi_i-definition
+: -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logf_k)*exp(logphi_i)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
+
+#+NAME: d_rss_u_d_logf_k-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.diff(rss_u,logf_k)
+#+END_SRC
+
+#+RESULTS: d_rss_u_d_logf_k-definition
+: -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logf_k)*exp(logphi_i)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
+
+#+NAME: d2_rss_u_d_logb_sy_d_logb_sy-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logb_sy)),sy.exp(logb_sy))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logb_sy_d_logb_sy-definition
+: y_k*exp(2*logb_sy)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logb_sy)
+
+#+NAME: d2_rss_u_d_logb_sy_d_logphi_i-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logphi_i)),sy.exp(logf_k)*sy.exp(logphi_i))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logb_sy_d_logphi_i-definition
+: y_k*exp(logb_sy + logf_k + logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k + logphi_i))**(3/2)
+
+#+NAME: d2_rss_u_d_logb_sy_d_logf_k-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logb_sy_d_logf_k-definition
+: y_k*exp(logb_sy + logf_k + logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k + logphi_i))**(3/2)
+
+#+NAME: d2_rss_u_d_logphi_i_d_logphi_i-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logphi_i,logphi_i)),sy.exp(logf_k)*sy.exp(logphi_i))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logphi_i_d_logphi_i-definition
+: y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
+
+#+NAME: d2_rss_u_d_logphi_i_d_logf_k-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logphi_i,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logphi_i_d_logf_k-definition
+: y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
+
+#+NAME: d2_rss_u_d_logf_k_d_logf_k-definition
+#+BEGIN_SRC python :session *ENP2015*
+sy.collect(sy.simplify(sy.diff(rss_u,logf_k,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
+#+END_SRC
+
+#+RESULTS: d2_rss_u_d_logf_k_d_logf_k-definition
+: y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
 
 #+NAME: extract-data-from-ROI
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
@@ -1329,19 +1413,135 @@ good_pix = np.where(np.log(chi2.sf(stack_pomc_stab_rss,df=stack_pomc_stab.shape[
 data4fit = stack_pomc_stab[good_pix[0],good_pix[1],:]
 #+END_SRC
 
+
 #+NAME: mk_rss-definition
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
-def mk_rss(data=data4fit):
+def mk_rss(data=data4fit,
+           S2=S2_hat0):
     npix,K = data.shape
-    f = ones((K,))
+    f = np.ones((K,))
+    nabla = np.zeros((K+npix,))
+    hessian = np.zeros((K+npix,K+npix))
+    d2phi = np.zeros((npix,))
+    dphidf = np.zeros((npix,K))
+    d2f = np.zeros((K,))
+    pred = np.zeros(data.shape)
     def rss(par):
-        par = exp(par)
+        par = np.exp(np.copy(par))
         b = par[0]
         phi = par[1:(npix+1)]
         f[1:] = par[(npix+1):]
-        pred = var_stab(outer(phi,f)+b)
-        return sum((donnees-pred)**2)
-    return rss
+        pred[:,:] = 2*np.sqrt(np.outer(phi,f)+b+S2)
+        return np.sum((data-pred)**2)
+    def grad(par):
+        par = np.exp(np.copy(par))
+        b = par[0]
+        phi = par[1:(npix+1)]
+        f[1:] = par[(npix+1):]
+        pred[:,:] = np.sqrt(np.outer(phi,f)+b+S2)
+        nabla[0] = np.sum(-2*b*(data - 2*pred)/pred)
+        nabla[1:(npix+1)] = np.sum(-2*f.reshape((1,K))*phi.reshape((npix,1))*(data - 2*pred)/pred,1)
+        nabla[(npix+1):] = np.sum(-2*f.reshape((1,K))*phi.reshape((npix,1))*(data - 2*pred)/pred,0)[1:]
+        return nabla
+    def hess(par):
+        par = np.exp(np.copy(par))
+        b = par[0]
+        phi = par[1:(npix+1)]
+        f[1:] = par[(npix+1):]
+        pred[:,:] = np.sqrt(np.outer(phi,f)+b+S2)
+        hessian[:,:] = 0.
+        hessian[0,0] = np.sum(data*b**2/pred**3+(4-2*data/pred)*b)
+        hessian[0,1:(npix+1)] = np.sum(data*b*f.reshape((1,K))*phi.reshape((npix,1))/pred**3,1)
+        hessian[1:(npix+1),0] = np.sum(data*b*f.reshape((1,K))*phi.reshape((npix,1))/pred**3,1)
+        hessian[0,(npix+1):] = np.sum(data*b*f.reshape((1,K))*phi.reshape((npix,1))/pred**3,0)[1:]
+        hessian[(npix+1):,0] = np.sum(data*b*f.reshape((1,K))*phi.reshape((npix,1))/pred**3,0)[1:]
+        dphidf[:,:] = data*f.reshape((1,K))**2*phi.reshape((npix,1))**2/pred**3+(4-2*data/pred)*f.reshape((1,K))*phi.reshape((npix,1))
+        d2phi[:] = np.sum(dphidf,1)
+        for i in range(npix):
+            hessian[1+i,1+i] = d2phi[i]
+            hessian[1+i,(npix+1):] = dphidf[i,1:]
+            hessian[(npix+1):,i+1] = dphidf[i,1:]
+        d2f[:] = np.sum(dphidf,0)
+        for i in range(K-1):
+            hessian[(npix+1+i),(npix+1+i)] = d2f[i+1]
+        return hessian
+    return (rss,grad,hess)
+
+#+END_SRC
+
+#+NAME: get-initial-guess
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+baseline = stack_pomc[good_pix[0],good_pix[1],:5].mean(1)
+f_0 = np.mean(stack_pomc[good_pix[0],good_pix[1],:]/baseline.reshape((12,1)),0)
+f_0[0]=1.
+b_0 = 100
+phi_0 = np.mean((stack_pomc[good_pix[0],good_pix[1],:]-b_0)/f_0.reshape((1,168)),1)
+par_0 = np.zeros((1+12+167,))
+par_0[0] = b_0
+par_0[1:13] = phi_0
+par_0[13:] = f_0[1:]
+#+END_SRC
+
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+def grad_num(fct=rss0,
+             par=np.log(np.copy(par_0)),
+             delta=1e-6):
+    n_par = len(par)
+    res = np.zeros((n_par,))
+    for i in range(n_par):
+        par[i] += delta
+        res[i] += fct(par)
+        par[i] -= 2*delta
+        res[i] -= fct(par)
+        par[i] += delta
+    return res/2/delta
+#+END_SRC
+
+#+BEGIN_SRC python :session *ENP2015* :exports none
+def hess_num(fct=rss0,
+             par=np.log(np.copy(par_0)),
+             delta=1e-4):
+    n_par = len(par)
+    res = np.zeros((n_par,n_par))
+    f0 = fct(par)
+    for i in range(n_par):
+        for j in range(i,n_par):
+            par[i] += delta
+            par[j] += delta
+            f3 = fct(par)
+            par[i] -= delta
+            f2 = fct(par)
+            par[i] += delta
+            par[j] -= delta
+            f1 = fct(par)
+            par[i] -= delta
+            res[i,j] = (f3-f2-f1+f0)/delta**2
+            if j > i:
+                res[j,i] = (f3-f2-f1+f0)/delta**2
+    return res
+#+END_SRC
+
+#+RESULTS:
+
+#+NAME: rss0-definition-and-value-at-initial-guess
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+rss0, grad0, hess0 = mk_rss()
+rss0(np.log(par_0))
+g0 = grad0(np.log(par_0))
+g0n = grad_num(rss0,np.log(np.copy(par_0)))
+np.max(np.abs(g0-g0n)/np.abs(g0))
+h0 = hess0(np.log(par_0))
+h0n = hess_num(rss0,np.log(np.copy(par_0)))
+not_zero = np.abs(h0) > 0.
+np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero]))
+#+END_SRC
+
+#+RESULTS: rss0-definition-and-value-at-initial-guess
+: 17547575.915
+
+#+BEGIN_SRC python :session *ENP2015* :exports none 
+from scipy.optimize import minimize
+ajuste0 = minimize(rss0,np.log(par_0),method='BFGS',options={'disp': True})
 #+END_SRC
 
 * Clean up :noexport:
