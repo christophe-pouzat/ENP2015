@@ -1248,6 +1248,102 @@ plt.close()
 [[file:figs/varVSmeanStable1.png]]
 #+END_CENTER
 
+
+* Application :export:
+
+** Back to where we started 					     :export:
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: POMC-raw-data-fig
+[[file:figs/POMC-raw-data.png]]
+#+END_CENTER
+
+ADU counts (raw data) from Fura-2 excited at 340 nm. Each square corresponds to a pixel. 25.05 s of data are shown. Same scale on each sub-plot. Data recorded by Andreas Pippow (Kloppenburg Lab. Cologne University).
+
+** Quick ROI detection (1): Motivation 				     :export:
+
++ After variance stabilization: $Z_{i,j,k} = 2 \, \sqrt{ADU_{i,j,k} / G + \sigma_{R}^2}$, the variance at each pixel $(i,j)$ at each time, $k$, should be 1.
++ If a pixel contains no dynamical signal---that is nothing more than a constant background signal---the following statistics: \[RSS_{i,j} \equiv \sum_{k=1}^{K} (Z_{i,j,k} - \overline{Z}_{i,j})^2 \quad \mathrm{with} \quad \overline{Z}_{i,j} \equiv \frac{1}{K} \sum_{k=1}^{K} Z_{i,j,k}\] should follow a $\chi^2$ distribution with $K-1$ degrees of freedom.
++ We could therefore compute the values of the complementary cumulative distribution function of the theoretical $\chi_{K-1}^2$ distribution:\[1 - F_{\chi_{K-1}^2}(RSS_{i,j})\] and look for very small values---that is very small probabilities---(using a log scale helps here).
+
+** Quick ROI detection (2) 					     :export:
+
+#+NAME: stack_pomc_stab-and-rss
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+stack_pomc_stab = 2*np.sqrt(np.copy(stack_pomc)/G_hat0+S2_hat0)
+stack_pomc_stab_rss = np.sum((stack_pomc_stab-stack_pomc_stab.mean(2).reshape((60,80,1)))**2,2)
+#+END_SRC 
+
+#+NAME: stack-contour-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+from scipy.stats import chi2
+plt.figure(dpi=600,figsize=(10,8))
+plt.subplot(121)
+plt.contour(range(60),range(80),
+            np.transpose(np.log(chi2.sf(stack_pomc_stab_rss,df=stack_pomc_stab.shape[2]-1))),
+            linewidths=2,linestyles='solid',colors='black')
+plt.grid()
+plt.title('Full field', fontsize=20)
+plt.subplot(122)
+plt.contour(range(60),range(80),
+            np.transpose(np.log(chi2.sf(stack_pomc_stab_rss,df=stack_pomc_stab.shape[2]-1))),
+            linewidths=2,linestyles='solid',colors='black')
+plt.xlim([23,33])
+plt.ylim([33,43])
+plt.title('Cell body', fontsize=20)
+plt.grid()
+plt.savefig('figs/stack-contour.png')
+plt.close()
+'figs/stack-contour.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: stack-contour-fig
+[[file:figs/stack-contour.png]]
+#+END_CENTER
+
+Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
+
+** Pointwise time course estimation (1) 			     :export:
+
++ We are going to be (very) conservative and keep as our ROI the pixels having an $\log\left(1 - F_{\chi_{K-1}^2}(RSS)\right) \le -300$.
++ We are then left with 12 pixels.
++ We are going to model the fluorescence intensity of each of these pixels by: \[S_{i,j}(t) = \phi_{i,j} \, f(t) + b \; ,\] where $f(t)$ is a signal time course to all pixels of the ROI, $\phi_{i,j}$ is a pixel specific parameter and $b$ is a background fluorescence assumed identical for each pixel.
++ The time $t$ is in fact a discrete variable, $t = \delta \, k$ ($\delta$ = 150 ms) and we are seeking a pointwise estimation: $\{f_1,f_2,\ldots,f_K\}$ ($K$ = 168) where $f_k = f(\delta \, k)$.
++ We end up with 12 ($\phi_{i,j}$) + 168 ($f_k$) + 1 ($b$) = 181 parameters for 12 x 168 = 2016 measurements.
+
+** Pointwise time course estimation (2) 			     :export:
+
++ We need to add a constraint since with our model specification: \[S_{i,j,k} = \phi_{i,j} \, f_k + b \; ,\] we can multiply all the $\phi_{i,j}$ by 2 and divide all the $f_k$ by 2 and get the same prediction.
++ We are going to set $f_1=1$ and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S(1)$ through: \[\Delta S(t) / S(1) = \frac{S(t) - S(1)}{S(1)} = f(t) - 1 + \mathrm{noise}\].
++ *Notice that no independent background measurement is used*.
+
+** Pointwise time course estimation (3) 			     :export:
+
+#+NAME: extract-data-from-ROI
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+threshold = -300
+good_pix = np.where(np.log(chi2.sf(stack_pomc_stab_rss,df=stack_pomc_stab.shape[2]-1)) < -300)
+data4fit = stack_pomc_stab[good_pix[0],good_pix[1],:]
+#+END_SRC
+
+#+NAME: mk_rss-definition
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+def mk_rss(data=data4fit):
+    npix,K = data.shape
+    f = ones((K,))
+    def rss(par):
+        par = exp(par)
+        b = par[0]
+        phi = par[1:(npix+1)]
+        f[1:] = par[(npix+1):]
+        pred = var_stab(outer(phi,f)+b)
+        return sum((donnees-pred)**2)
+    return rss
+#+END_SRC
+
 * Clean up :noexport:
 
 #+NAME: close-calibration
