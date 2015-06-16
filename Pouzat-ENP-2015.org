@@ -59,9 +59,13 @@ urllib.urlretrieve("http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5","Data_P
 
 Once the data are on the local disk, they are loaded into =Python= with:
 
+#+NAME: import-h5py
+#+BEGIN_SRC python :session *ENP2015* :results silent
+import h5py
+#+END_SRC
+
 #+NAME: load-POMC-dataset
 #+BEGIN_SRC python :session *ENP2015* 
-import h5py
 pomc = h5py.File("Data_POMC.hdf5","r")
 list(pomc)
 #+END_SRC
@@ -1094,6 +1098,8 @@ for x,y in zip([np.mean(calibration[n+'/stack'],2) for n in list(calibration)],
 
 plt.xlabel(r'$\overline{ADU}$',fontsize=25)
 plt.ylabel("Var(ADU)",fontsize=25)
+plt.xlim([0,4500])
+plt.ylim([0,1000])
 plt.savefig('figs/var_vs_mean_calibration_1.png')
 plt.close()
 'figs/var_vs_mean_calibration_1.png'
@@ -1105,7 +1111,142 @@ plt.close()
 [[file:figs/var_vs_mean_calibration_1.png]]
 #+END_CENTER
 
-We do see the expected linear relation: $\mathrm{Var}[ADU] = G \mathrm{E}[ADU] + G^2 \sigma_{R}^2$. 
+We do see the expected linear relation: $\mathrm{Var}[ADU] = G^2 \sigma_{R}^2 + G \mathrm{E}[ADU]$. 
+
+** CCD calibration (8): Linear fit 				     :export:
+
+The [[http://en.wikipedia.org/wiki/Heteroscedasticity][heteroscedasticity]] (inhomogeneous variance) visible on the graph is also expected since the variance of a variance for an IID sample of size $K$ from a normal distribution with mean $\mu$ and variance $\sigma^2$ is: $$\mathrm{Var}[S^2] = \frac{2\sigma^4}{(K-1)} \; .$$
+
++ This means than when we do our linear fit, $$y_k = a + b x_k + \sigma_k \epsilon_k \, ,$$ we should use weights.
++ Here $$x_k = \overline{ADU}_k \quad y_k = \mathrm{Var}[ADU]_k \, ,$$ $$b = G \quad a = G^2 \sigma_R^2 \, .$$
+
+** CCD calibration (9): Linear fit 				     :export:
+
++ It's easy to show that the least square estimates are: $$\hat{a} = \frac{1}{Z} \sum_k \frac{y_k-\hat{b} x_k}{\sigma_k^2} \quad \text{where} \quad Z = \sum_k \frac{1}{\sigma_k^2}$$ and $$\hat{b} = \left(\sum_k \frac{x_k}{\sigma_k^2} \left(y_k - \frac{1}{Z}\sum_j \frac{y_j}{\sigma_j^2}\right)\right) / \left(\sum_k \frac{x_k}{\sigma_k^2}\left(x_k - \frac{1}{Z}\sum_j \frac{x_j}{\sigma_j^2}\right)\right) \, .$$ 
++ We don't know $\sigma_k$ but we have an estimation: $\hat{\sigma}_k^2 = \mathrm{Var}[S_k^2]$ we can "plug-in" this value to get our weights. 
+
+#+NAME: a_hat-and-b_hat-from-weighted-linear-fit
+#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+X_k = np.concatenate([x.flatten() for x in [np.mean(calibration[n+'/stack'],2) for n in list(calibration)]])
+y_k = np.concatenate([x.flatten() for x in [np.var(calibration[n+'/stack'],2) for n in list(calibration)]])
+sigma2_k = 2*y_k**2/(calibration['10ms/stack'].shape[2]-1)
+Z = sum(1/sigma2_k)
+num1 = sum(X_k/sigma2_k*(y_k-sum(y_k/sigma2_k)/Z))
+denom1 = sum(X_k/sigma2_k*(X_k-sum(X_k/sigma2_k)/Z))
+b_hat0 = num1/denom1
+a_hat0 = sum((y_k-b_hat0*X_k)/sigma2_k)/Z
+#+END_SRC
+
+** CCD calibration (10): Linear fit 				     :export:
+
+#+NAME: var-vs-mean-plus-fit-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+for x,y in zip([np.mean(calibration[n+'/stack'],2) for n in list(calibration)],
+               [np.var(calibration[n+'/stack'],2) for n in list(calibration)]):
+    plt.scatter(x.flatten(),y.flatten(),0.05)
+
+plt.xlabel(r'$\overline{ADU}$',fontsize=25)
+plt.ylabel("Var(ADU)",fontsize=25)
+aa = np.linspace(0,4500)
+plt.plot(np.linspace(0,4500,101),a_hat0+b_hat0*np.linspace(0,4500,101),color='red',lw=2)
+plt.xlim([0,4500])
+plt.ylim([0,1000])
+plt.savefig('figs/var_vs_mean_plus_fit_calibration_1.png')
+plt.close()
+'figs/var_vs_mean_plus_fit_calibration_1.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: var-vs-mean-plus-fit-fig
+[[file:figs/var_vs_mean_plus_fit_calibration_1.png]]
+#+END_CENTER
+
+#+NAME: assign-and-print-G_hat0-and-S2_hat0
+#+BEGIN_SRC python :session *ENP2015* :exports none
+G_hat0 = b_hat0
+S2_hat0 = a_hat0/b_hat0**2 
+(G_hat0, S2_hat0)
+#+END_SRC
+
+#+RESULTS: assign-and-print-G_hat0-and-S2_hat0
+| 0.1384399188990568 | 289.85755480280824 |
+
+We have here $\hat{G} = 0.14$ and $\hat{\sigma}_R^2 = 290$.
+
+** CCD calibration (11): Checking the fit 			     :export:
+
+#+NAME: residuals-vs-fitted-values-calibration-fit-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+for x,y in zip([np.mean(calibration[n+'/stack'],2) for n in list(calibration)],
+               [np.var(calibration[n+'/stack'],2) for n in list(calibration)]):
+    plt.scatter(a_hat0+b_hat0*x.flatten(),(y.flatten()-a_hat0-b_hat0*x.flatten())*np.sqrt(99/2)/(a_hat0+b_hat0*x.flatten()),0.05)
+
+plt.xlabel('Fitted value',fontsize=25)
+plt.ylabel("Normalized residuals (Normal scores)",fontsize=25)
+plt.axhline(0,color='red',lw=2)
+plt.savefig('figs/residuals_vs_fitted_values_calibration_fit.png')
+plt.close()
+'figs/residuals_vs_fitted_values_calibration_fit.png'
+#+END_SRC
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: residuals-vs-fitted-values-calibration-fit-fig
+[[file:figs/residuals_vs_fitted_values_calibration_fit.png]]
+#+END_CENTER
+
+** CCD calibration (12): Some remarks 				     :export:
+
++ When we use a linear regression, we are (implicitly) assuming that the "independent" variable, here $\overline{ADU}_k$, is /exactly/ known.
++ This was clearly not the case here since $\overline{ADU}_k$ was measured (with an error). 
++ We could and will therefore refine our fit.
+
+* Error propagation and variance stabilization :export:
+
+** Error propagation 						     :export:
++ Let us consider two random variables: $Y$ and $Z$ such that:
++ $Y \approx \mathcal{N}(\mu_Y,\sigma^2_Y)$ or $Y \approx \mu_Y + \sigma_Y \, \epsilon$
++ $Z = f(Y)$, with $f$ continuous and differentiable.
++ Using a first order Taylor expansion we then have:\[ \begin{array}{lcl} Z & \approx & f(\mu_Y + \sigma_Y \, \epsilon_2) \\ & \approx & f(\mu_Y) + \sigma_Y \, \epsilon \, \frac{d f}{d Y}(\mu_Y) \end{array}\]
++ $\mathrm{E}Z \approx f(\mu_Y) = f(\mathrm{E}Y)$
++ $\mathrm{Var}Z \equiv \mathrm{E}[(Z-\mathrm{E}Z)^2] \approx \sigma^2_Y \, \frac{d f}{d Y}^2(\mu_Y)$
++ $Z \approx f(\mu_Y) + \sigma_Y\left| \frac{d f}{d Y}(\mu_Y)\right| \, \epsilon$
+
+** Variance stabilization (1): Theory 				     :export:
+
++ For our CCD model we have (for a given pixel): \[Y \sim G \, \lambda + \sqrt{G^2 \, (\lambda+\sigma_{R}^2)} \, \epsilon = \mu_Y + \sqrt{G \, \mu_Y + G^2 \, \sigma_{R}^2}\]
++ Then if $Z = f(Y)$ we get: \[Z \approx f(\mu_Y) + \mid f'(\mu_Y) \mid G \sqrt{\mu_Y / G+\sigma_{R}^2} \, \epsilon\]
++ What happens then if we take: $f(x) = 2 \, \sqrt{x/G + \sigma_{R}^2}$?
++ We have: \[f'(x) = \frac{1}{G \sqrt{ x / G + \sigma_{R}^2}}\]
++ Leading to: \[Z \approx 2 \, \sqrt{\mu_Y / G + \sigma_{R}^2} + \epsilon\]
+
+** Variance stabilization (2): Example 				     :export:
+
+#+NAME: varVSmeanStable1-fig
+#+BEGIN_SRC python :session *ENP2015* :exports results :results file
+plt.figure(dpi=600,figsize=(10,8))
+for x,y in zip([np.mean(2*np.sqrt(calibration[n+'/stack']/G_hat0+S2_hat0),2) for n in list(calibration)],
+               [np.var(2*np.sqrt(calibration[n+'/stack']/G_hat0+S2_hat0),2) for n in list(calibration)]):
+    plt.scatter(x.flatten(),y.flatten(),0.05)
+
+plt.xlabel(r'$\mathrm{E}(2 \sqrt{ADU/\hat{G}+\hat{\sigma}_R^2})$',fontsize=20)
+plt.ylabel(r'$\mathrm{Var}(2 \sqrt{ADU/\hat{G}+\hat{\sigma}_R^2})$',fontsize=20)
+plt.xlim([100,350])
+plt.axhline(1,color='red',lw=2)
+plt.savefig('figs/varVSmeanStable1.png')
+plt.close()
+'figs/varVSmeanStable1.png'
+#+END_SRC
+
+
+#+BEGIN_CENTER
+#+ATTR_LaTeX: :width 0.7\textwidth
+#+RESULTS: varVSmeanStable1-fig
+[[file:figs/varVSmeanStable1.png]]
+#+END_CENTER
 
 * Clean up :noexport:
 
