@@ -1210,16 +1210,16 @@ plt.close()
 + Let us consider two random variables: $Y$ and $Z$ such that:
 + $Y \approx \mathcal{N}(\mu_Y,\sigma^2_Y)$ or $Y \approx \mu_Y + \sigma_Y \, \epsilon$
 + $Z = f(Y)$, with $f$ continuous and differentiable.
-+ Using a first order Taylor expansion we then have:\[ \begin{array}{lcl} Z & \approx & f(\mu_Y + \sigma_Y \, \epsilon_2) \\ & \approx & f(\mu_Y) + \sigma_Y \, \epsilon \, \frac{d f}{d Y}(\mu_Y) \end{array}\]
++ Using a first order Taylor expansion we then have:\[ \begin{array}{lcl} Z & \approx & f(\mu_Y + \sigma_Y \, \epsilon) \\ & \approx & f(\mu_Y) + \sigma_Y \, \epsilon \, \frac{d f}{d Y}(\mu_Y) \end{array}\]
 + $\mathrm{E}Z \approx f(\mu_Y) = f(\mathrm{E}Y)$
 + $\mathrm{Var}Z \equiv \mathrm{E}[(Z-\mathrm{E}Z)^2] \approx \sigma^2_Y \, \frac{d f}{d Y}^2(\mu_Y)$
 + $Z \approx f(\mu_Y) + \sigma_Y\left| \frac{d f}{d Y}(\mu_Y)\right| \, \epsilon$
 
 ** Variance stabilization (1): Theory 				     :export:
 
-+ For our CCD model we have (for a given pixel): \[Y \sim G \, \lambda + \sqrt{G^2 \, (\lambda+\sigma_{R}^2)} \, \epsilon = \mu_Y + \sqrt{G \, \mu_Y + G^2 \, \sigma_{R}^2}\]
++ For our CCD model we have (for a given pixel): \[Y \sim G \, \lambda + \sqrt{G^2 \, (\lambda+\sigma_{R}^2)} \, \epsilon = \mu_Y + \sqrt{G \, \mu_Y + G^2 \, \sigma_{R}^2} \, \epsilon \, .\]
 + Then if $Z = f(Y)$ we get: \[Z \approx f(\mu_Y) + \mid f'(\mu_Y) \mid G \sqrt{\mu_Y / G+\sigma_{R}^2} \, \epsilon\]
-+ What happens then if we take: $f(x) = 2 \, \sqrt{x/G + \sigma_{R}^2}$?
++ What happens then if we take: $f(x) = 2 \, \sqrt{x/G + \sigma_{R}^2}\;$?
 + We have: \[f'(x) = \frac{1}{G \sqrt{ x / G + \sigma_{R}^2}}\]
 + Leading to: \[Z \approx 2 \, \sqrt{\mu_Y / G + \sigma_{R}^2} + \epsilon\]
 
@@ -1317,7 +1317,7 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 ** Pointwise time course estimation (2) 			     :export:
 
 + We need to add a constraint since with our model specification: \[S_{i,j,k} = \phi_{i,j} \, f_k + b \; ,\] we can multiply all the $\phi_{i,j}$ by 2 and divide all the $f_k$ by 2 and get the same prediction.
-+ We are going to set $f_k=1$ for the first 5 time points (the stimulation comes at the 11th) and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S_0$ (where $S_0$ is a baseline average) through: \[\Delta S(t) / S_0 = \frac{S(t) - S_0}{S_0} = f(t) - 1 + \mathrm{noise}\].
++ We are going to set $f_k=1$ for the first 5 time points (the stimulation comes at the 11th) and our pointwise estimation relates to what is usually done with this type of data, $\Delta S(t) / S_0$ (where $S_0$ is a baseline average) through: \[\Delta S(t) / S_0 = \frac{S(t) - S_0}{S_0} = f(t) - 1 + \mathrm{noise}\, .\]
 + *Notice that no independent background measurement is used*.
 
 ** Pointwise time course estimation (3) 			     :export:
