@@ -1333,6 +1333,21 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 
 ** Doing the fit :noexport:
 
+#+BEGIN_SRC python :session *ENP2015* :results silent
+b , s2 = sy.symbols('b, s2',real=True,positive=True)
+pred = list()
+for phi in sy.symbols('phi_:12',real=True,positive=True):
+    for f in (1,1,1,1,1) + sy.symbols('f_5:168',real=True,positive=True):
+        pred.append(2*sy.sqrt(phi*f+b+s2))
+
+rss = list()
+for z,p in zip(sy.symbols('z_:2015',real=True,positive=True),pred):
+    rss.append((z-p)**2)
+
+rss = sum(rss)
+#+END_SRC
+
+
 We start by defining a symbolic "unitary" rss:
 
 #+NAME: rss_u-definition
