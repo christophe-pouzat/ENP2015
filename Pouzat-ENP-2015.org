@@ -16,6 +16,9 @@
 * Introduction
 
 ** Setting up =org= :noexport:
+   :PROPERTIES:
+   :ORDERED:  t
+   :END:
 #+BEGIN_SRC elisp :eval no-export :results silent
 (require 'ox-beamer)
 (setq org-beamer-outline-frame-options "")
@@ -1333,7 +1336,7 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 
 ** Doing the fit :noexport:
 
-#+BEGIN_SRC python :session *ENP2015* :results silent
+#+BEGIN_SRC python :session *ENP2015* :results silent :eval never
 b , s2 = sy.symbols('b, s2',real=True,positive=True)
 pred = list()
 for phi in sy.symbols('phi_:12',real=True,positive=True):
@@ -1346,7 +1349,6 @@ for z,p in zip(sy.symbols('z_:2015',real=True,positive=True),pred):
 
 rss = sum(rss)
 #+END_SRC
-
 
 We start by defining a symbolic "unitary" rss:
 
@@ -1551,7 +1553,7 @@ def mk_rss(data=data4fit,
             hessian[(npix+1):,i+1] = dphidf[i,base_length:]
         d2f[:] = np.sum(dphidf,0)
         for i in range(K-base_length):
-            hessian[(npix+1+i),(npix+1+i)] = d2f[i+1]
+            hessian[(npix+1+i),(npix+1+i)] = d2f[i+base_length]
         return hessian
     return (rss,grad,hess)
 
@@ -1634,7 +1636,7 @@ print(np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero])))
 : 
 : 17547562.449
 : 5.89580034732e-08
-: 0.149133423179
+: 0.000847340050286
 
 
 #+BEGIN_SRC python :session *ENP2015* :exports none :results output
@@ -1645,11 +1647,11 @@ res = minimize(rss0,np.log(par_0),method='Newton-CG',jac=grad0,hess=hess0,option
 #+RESULTS:
 : 
 : Optimization terminated successfully.
-:          Current function value: 1975.519030
-:          Iterations: 592
-:          Function evaluations: 954
-:          Gradient evaluations: 1545
-:          Hessian evaluations: 592
+:          Current function value: 1975.518323
+:          Iterations: 178
+:          Function evaluations: 347
+:          Gradient evaluations: 524
+:          Hessian evaluations: 178
 
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
 def mk_pred(p_vector,
@@ -1678,9 +1680,9 @@ def mk_pred(p_vector,
 #+BEGIN_SRC python :session *ENP2015* :exports results :results file
 f_hat = np.zeros((168,))
 f_hat[5:] = res.x[13:]
-hOn = hess_num(rss0,np.copy(res.x),delta=1e-3)
-par_se = np.sqrt(np.diag(scipy.linalg.inv(hOn)))
-#par_se = np.sqrt(np.diag(scipy.linalg.inv(hess0(res.x))))
+#hOn = hess_num(rss0,np.copy(res.x),delta=1e-3)
+#par_se = np.sqrt(np.diag(scipy.linalg.inv(hOn)))
+par_se = np.sqrt(np.diag(scipy.linalg.inv(hess0(res.x))))
 f_up = np.zeros((168,))
 f_up[5:] = res.x[13:] + 1.96*par_se[13:]
 f_low = np.zeros((168,))
