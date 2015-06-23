@@ -1336,6 +1336,8 @@ Contour plots of $\log\left(1 - F_{\chi_{K-1}^2}(RSS_{i,j})\right)$
 
 ** Doing the fit :noexport:
 
+#+BEGIN_COMMENT
+
 #+BEGIN_SRC python :session *ENP2015* :results silent :eval never
 b , s2 = sy.symbols('b, s2',real=True,positive=True)
 pred = list()
@@ -1350,10 +1352,30 @@ for z,p in zip(sy.symbols('z_:2015',real=True,positive=True),pred):
 rss = sum(rss)
 #+END_SRC
 
-We start by defining a symbolic "unitary" rss:
+#+END_COMMENT
+
+*** Symbolic derivation setting
+
+We want now to define three functions :
+
+1. One that returns the residuals sum of square given the model's parameters (and the data): $RSS\left(b,(\phi_{i,j}),(f_k)_{k=5,\ldots,168}\right) = \sum_{(i,j) \in \mathrm{ROI}} \sum_{k=1}^{168} \left(Z_{ijk}-F_{ijk}\right)^2 \, ,$ where $Z_{ijk} = 2*\sqrt{ADU_{ijk}/\hat{G}+\hat{\sigma}_R^2}$ and $F_{ijk} = 2*\sqrt{\phi_{i,j} \, f_k + b + \hat{\sigma}_R^2}$.
+2. One that returns the gradient vector of this RSS.
+3. One that returns the Hessian matrix.
+
+As explained above, since all the model parameters are positive we are going to define these three functions as functions of the log of the parameters. We are going to use the =SymPy= module to get the analytical expressions we need to define our functions.
+ 
+We start by defining a symbolic "unitary" rss corresponding to one term $(i,j,k)$ in the sum: \[\left(2*\sqrt{ADU_{ijk}/\hat{G}+\hat{\sigma}_R^2} - 2*\sqrt{\exp \log \phi_{i,j} \, \exp \log f_k + \exp \log b + \hat{\sigma}_R^2}\right)^2 \, .\]
+
+In the code that follows:
+
++ =y_k= stands for $2*\sqrt{ADU_{ijk}/\hat{G}+\hat{\sigma}_R^2}$.
++ =logphi_i= stands for $\log \phi_{i,j}$.
++ =logf_k= stands for $\log f_k$.
++ =logb_sy= stands for $\log b$.
++ =S2_L= stands for $\hat{\sigma}_R^2$.
 
 #+NAME: rss_u-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 y_k,logphi_i,logf_k,logb_sy,S2_L = sy.symbols('y_k,logphi_i,logf_k,logb_sy,S2_L',real=True)
 rss_u = (y_k - 2*sy.sqrt(sy.exp(logphi_i)*sy.exp(logf_k)+sy.exp(logb_sy)+S2_L))**2
 rss_u
@@ -1362,86 +1384,123 @@ rss_u
 #+RESULTS: rss_u-definition
 : (y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))**2
 
+*** Symbolic gradient
+
+We get the first derivative with respect to =logb_sy= with:
+
 #+NAME: d_rss_u_d_logb_sy-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.diff(rss_u,logb_sy)
 #+END_SRC
 
 #+RESULTS: d_rss_u_d_logb_sy-definition
 : -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logb_sy)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over all the pixels $(i,j)$ at all times $k$.
+We get the first derivative with respect to =logphi_i= with:
+
 #+NAME: d_rss_u_d_logphi_i-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.diff(rss_u,logphi_i)
 #+END_SRC
 
 #+RESULTS: d_rss_u_d_logphi_i-definition
 : -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logf_k)*exp(logphi_i)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *a single pixel* $(i,j)$ at all times $k$.
+We get the first derivative with respect to =logf_k= with:
+
 #+NAME: d_rss_u_d_logf_k-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.diff(rss_u,logf_k)
 #+END_SRC
 
 #+RESULTS: d_rss_u_d_logf_k-definition
 : -2*(y_k - 2*sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)))*exp(logf_k)*exp(logphi_i)/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *all the pixels* $(i,j)$ at *a single time* $k$.
+
+*** Symbolic Hessian
+
+We get the second derivative with respect to =logb_sy= with:
+
 #+NAME: d2_rss_u_d_logb_sy_d_logb_sy-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logb_sy)),sy.exp(logb_sy))
 #+END_SRC
 
 #+RESULTS: d2_rss_u_d_logb_sy_d_logb_sy-definition
 : y_k*exp(2*logb_sy)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logb_sy)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *all the pixels* $(i,j)$ at *all times* $k$. We get the second derivative with respect to =logb_sy= and =logphi_i= with:
+
 #+NAME: d2_rss_u_d_logb_sy_d_logphi_i-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logphi_i)),sy.exp(logf_k)*sy.exp(logphi_i))
 #+END_SRC
 
 #+RESULTS: d2_rss_u_d_logb_sy_d_logphi_i-definition
 : y_k*exp(logb_sy + logf_k + logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k + logphi_i))**(3/2)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *a single pixel* $(i,j)$ at *all times* $k$. We get the second derivative with respect to =logb_sy= and =logf_k= with:
+
 #+NAME: d2_rss_u_d_logb_sy_d_logf_k-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logb_sy,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
 #+END_SRC
 
 #+RESULTS: d2_rss_u_d_logb_sy_d_logf_k-definition
 : y_k*exp(logb_sy + logf_k + logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k + logphi_i))**(3/2)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *all the pixels* $(i,j)$ at *at a single time* $k$. We get the second derivative with respect to =logphi_i= with:
+
 #+NAME: d2_rss_u_d_logphi_i_d_logphi_i-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logphi_i,logphi_i)),sy.exp(logf_k)*sy.exp(logphi_i))
 #+END_SRC
+
 
 #+RESULTS: d2_rss_u_d_logphi_i_d_logphi_i-definition
 : y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *a single pixel* $(i,j)$ at *all times* $k$. The second derivative with respect to the $\phi$ of two different pixels is null. We get the second derivative with respect to =logphi_i= and =logf_k= with:
+
 #+NAME: d2_rss_u_d_logphi_i_d_logf_k-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logphi_i,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
 #+END_SRC
 
 #+RESULTS: d2_rss_u_d_logphi_i_d_logf_k-definition
 : y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *a single pixel* $(i,j)$ at *a single time* $k$. We get the second derivative with respect to =logf_k= with:
+
 #+NAME: d2_rss_u_d_logf_k_d_logf_k-definition
-#+BEGIN_SRC python :session *ENP2015*
+#+BEGIN_SRC python :session *ENP2015* :exports both
 sy.collect(sy.simplify(sy.diff(rss_u,logf_k,logf_k)),sy.exp(logf_k)*sy.exp(logphi_i))
 #+END_SRC
 
 #+RESULTS: d2_rss_u_d_logf_k_d_logf_k-definition
 : y_k*exp(2*logf_k)*exp(2*logphi_i)/(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i))**(3/2) + (-2*y_k/sqrt(S2_L + exp(logb_sy) + exp(logf_k)*exp(logphi_i)) + 4)*exp(logf_k)*exp(logphi_i)
 
+When this "unitary" expression is re-injected into the "full" $RSS$ expression, the summation is made over *all the pixels* $(i,j)$ at *a single time* $k$. The block of the Hessian matrix generated by the second derivatives with respect to the =logf_k= parameters is *diagonal*.
+
+*** Extracting the data for the fit
+
 #+NAME: extract-data-from-ROI
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+#+BEGIN_SRC python :session *ENP2015* :results silent
+from scipy.stats import chi2
 threshold = -300
 good_pix = np.where(np.log(chi2.sf(stack_pomc_stab_rss,df=stack_pomc_stab.shape[2]-1)) < -300)
 data4fit = stack_pomc_stab[good_pix[0],good_pix[1],:]
 #+END_SRC
 
 
+*** Functions definitions
+
+We come now to the definition of the three functions ($RSS$, gradient and Hessian). We start in fact with a "constructor" function, that is a function taking the data as argument and returning a triplet of functions:
+
+#+BEGIN_COMMENT
 #+NAME: mk_rss-definition
 #+BEGIN_SRC python :session *ENP2015* :exports none :results silent
 def mk_rss(data=data4fit,
@@ -1499,9 +1558,10 @@ def mk_rss(data=data4fit,
     return (rss,grad,hess)
 
 #+END_SRC
+#+END_COMMENT
 
 #+NAME: mk_rss-definition2
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+#+BEGIN_SRC python :session *ENP2015* :results silent
 def mk_rss(data=data4fit,
            S2=S2_hat0,
            base_length=5):
@@ -1559,13 +1619,19 @@ def mk_rss(data=data4fit,
 
 #+END_SRC
 
+We then "instantiate" the three functions:
+ 
 #+NAME: rss0-definition
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
-rss0, grad0, hess0 = mk_rss()
+#+BEGIN_SRC python :session *ENP2015* :results silent
+rss0, grad0, hess0 = mk_rss(data4fit)
 #+END_SRC
 
+*** Getting the initial guesses
+
+We use a classical $\Delta F / F_0$ to get the initial guesses. We set the (initial guess for the) background fluorescence to an arbitrary small but postive value:
+
 #+NAME: get-initial-guess
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+#+BEGIN_SRC python :session *ENP2015* :results silent
 baseline = stack_pomc[good_pix[0],good_pix[1],:5].mean(1)
 f_0 = np.mean(stack_pomc[good_pix[0],good_pix[1],:]/baseline.reshape((12,1)),0)
 b_0 = 100
@@ -1576,7 +1642,11 @@ par_0[1:13] = phi_0
 par_0[13:] = f_0[5:]
 #+END_SRC
 
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+*** Checking the analytical expressions
+
+The codes returning the gradient and Hessian matrix are somewhat tedious, meaning that we could have made mistakes typing them. It's therefore a good policy to check their results against slow but less error prone codes doing the gradient and Hessian matrix evaluation numerically. We define first a function returning the gradient using the central difference:
+
+#+BEGIN_SRC python :session *ENP2015* :results silent
 def grad_num(fct=rss0,
              par=np.log(np.copy(par_0)),
              delta=1e-6):
@@ -1591,7 +1661,9 @@ def grad_num(fct=rss0,
     return res/2/delta
 #+END_SRC
 
-#+BEGIN_SRC python :session *ENP2015* :exports none
+We define next a function returning a numerical evaluation of the Hessian matrix:
+
+#+BEGIN_SRC python :session *ENP2015* :results silent
 def hess_num(fct=rss0,
              par=np.log(np.copy(par_0)),
              delta=1e-4):
@@ -1615,31 +1687,40 @@ def hess_num(fct=rss0,
     return res
 #+END_SRC
 
-#+RESULTS:
+We can now do the tests:
 
 #+NAME: values-at-initial-guess-and-tests
-#+BEGIN_SRC python :session *ENP2015* :exports none :results output
+#+BEGIN_SRC python :session *ENP2015* :exports code :results silent
 g0 = grad0(np.log(par_0))
 g0n = grad_num(rss0,np.log(np.copy(par_0)))
 h0 = hess0(np.log(par_0))
 h0n = hess_num(rss0,np.log(np.copy(par_0)),delta=1e-3)
 not_zero = np.abs(h0) > 0.
-print(rss0(np.log(par_0)))
-print(np.max(np.abs(g0-g0n)/np.abs(g0)))
-print(np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero])))
+print('Initial RSS value: \n', rss0(np.log(par_0)), '\n')
+print('Maximal relative difference (in absolute value) between analytical and numerical gradient: \n', np.max(np.abs(g0-g0n)/np.abs(g0)),'\n')
+print('Maximal relative difference (in absolute value) between analytical and numerical Hessian: \n', np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero])), '\n')
 #+END_SRC
 
-#+RESULTS: values-at-initial-guess-and-tests
-: 
-: 
-: 
-: 
-: 17547562.449
-: 5.89580034732e-08
-: 0.000847340050286
+#+NAME: values-at-initial-guess-and-tests-print
+#+BEGIN_SRC python :session *ENP2015* :exports results :results output
+print('Initial RSS value: \n', rss0(np.log(par_0)), '\n')
+print('Maximal relative difference (in absolute value) between analytical and numerical gradient: \n', np.max(np.abs(g0-g0n)/np.abs(g0)),'\n')
+print('Maximal relative difference (in absolute value) between analytical and numerical Hessian: \n', np.max(np.abs(h0n[not_zero]-h0[not_zero])/np.abs(h0[not_zero])), '\n')
+#+END_SRC
 
+#+RESULTS: values-at-initial-guess-and-tests-print
+: Initial RSS value: 
+:  17547562.449
+: Maximal relative difference (in absolute value) between analytical and numerical gradient: 
+:  5.89580034732e-08
+: Maximal relative difference (in absolute value) between analytical and numerical Hessian: 
+:  0.000847340050286
+: 
+: 
 
-#+BEGIN_SRC python :session *ENP2015* :exports none :results output
+*** Doing the fit
+
+#+BEGIN_SRC python :session *ENP2015* :exports both :results output
 from scipy.optimize import minimize
 res = minimize(rss0,np.log(par_0),method='Newton-CG',jac=grad0,hess=hess0,options={'disp': True, 'xtol': 1e-8})
 #+END_SRC
@@ -1653,7 +1734,11 @@ res = minimize(rss0,np.log(par_0),method='Newton-CG',jac=grad0,hess=hess0,option
 :          Gradient evaluations: 524
 :          Hessian evaluations: 178
 
-#+BEGIN_SRC python :session *ENP2015* :exports none :results silent
+We see here the clear reduction in the $RSS$, starting at 17547562 and ending at 1975.
+
+*** Definition of a function returning the prediction 
+
+#+BEGIN_SRC python :session *ENP2015* :results silent
 def mk_pred(p_vector,
             log_scale=False,
             stabilise_var=True,
@@ -1680,15 +1765,12 @@ def mk_pred(p_vector,
 #+BEGIN_SRC python :session *ENP2015* :exports results :results file
 f_hat = np.zeros((168,))
 f_hat[5:] = res.x[13:]
-#hOn = hess_num(rss0,np.copy(res.x),delta=1e-3)
-#par_se = np.sqrt(np.diag(scipy.linalg.inv(hOn)))
 par_se = np.sqrt(np.diag(scipy.linalg.inv(hess0(res.x))))
 f_up = np.zeros((168,))
 f_up[5:] = res.x[13:] + 1.96*par_se[13:]
 f_low = np.zeros((168,))
 f_low[5:] = res.x[13:] - 1.96*par_se[13:]
 fig, ax = plt.subplots(dpi=600,figsize=(10,8))
-#fig, ax = plt.subplots()
 ax.fill_between(np.arange(168)*0.15,np.exp(f_low),np.exp(f_up),facecolor='grey',edgecolor='grey')
 ax.plot(np.arange(168)*0.15,np.exp(f_hat),lw=1,color='red')
 plt.grid()
