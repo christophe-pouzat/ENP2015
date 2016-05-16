@@ -3,7 +3,7 @@
 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-<!-- 2016-05-16 lun. 22:34 -->
+<!-- 2016-05-16 lun. 23:55 -->
 <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta  name="viewport" content="width=device-width, initial-scale=1" />
 <title>The analysis in <code>C</code></title>
@@ -154,6 +154,7 @@ for the JavaScript code in this tag.
 </ul>
 </li>
 <li><a href="#orgheadline3">2. Getting the <code>mean</code> and <code>variance</code> of each pixel for each exposure time</a></li>
+<li><a href="#orgheadline4">3. Weighted least-square fit of the Variance versus the Mean</a></li>
 </ul>
 </div>
 </div>
@@ -389,11 +390,95 @@ It is then used in combination with the <a href="http://www.gnu.org/software/plo
 </div>
 </div>
 </div>
+
+<div id="outline-container-orgheadline4" class="outline-2">
+<h2 id="orgheadline4"><span class="section-number-2">3</span> Weighted least-square fit of the Variance versus the Mean</h2>
+<div class="outline-text-2" id="text-3">
+<p>
+The <code>C</code> code doing the job is an extension of the previous one:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C" id="orgsrcblock7">#include &lt;string.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;gsl/gsl_statistics.h&gt;
+#include &lt;gsl/gsl_fit.h&gt;
+#include &lt;hdf5.h&gt;
+#include &lt;hdf5_hl.h&gt;
+
+#define FILE        "CCD_calibration.hdf5"
+#define RANK 3
+#define N1 60
+#define N2 80
+#define N3 100
+
+char *dsetnames[]={"/10ms/stack","/20ms/stack","/30ms/stack","/40ms/stack","/50ms/stack",
+		   "/60ms/stack","/70ms/stack","/80ms/stack","/90ms/stack","/100ms/stack"};
+ 
+int main( void )
+{
+ /* open file from ex_lite1.c */
+ hid_t file_id = H5Fopen (FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
+ int rank = RANK;
+ hsize_t dims[RANK] = {N1,N2,N3};
+ int n_elt = N1*N2*N3;
+ int data[n_elt];
+ double mean[N1*N2*10];
+ double var[N1*N2*10];
+ size_t r_idx=0;
+ for (int dset_idx=0; dset_idx &lt; 10; dset_idx++) {
+   /* read dataset */
+   H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
+   for (size_t i=0; i &lt; N1; i++) {
+     for (size_t j=0; j &lt; N2; j++) {
+       double data_dbl[N3];
+       for (size_t k=0; k &lt; N3; k++) data_dbl[k] = (double) data[N2*N3*i+N3*j+k];
+       mean[r_idx] = gsl_stats_mean(data_dbl,1,N3);
+       var[r_idx] = gsl_stats_variance_m(data_dbl,1,N3,mean[r_idx]);
+       r_idx++;
+     }
+   }
+ }
+ double w[N1*N2*10];
+ for (int i=0; i &lt; N1*N2*10; i++) w[i] = 1/var[i];
+ double intercept,slope,sigma_intercept,sigma_cross,sigma_slope,chisq;
+ gsl_fit_wlinear (mean, 1, w, 1, var, 1, N1*N2*10, 
+		  &amp;intercept, &amp;slope, &amp;sigma_intercept, &amp;sigma_cross, &amp;sigma_slope, 
+		  &amp;chisq);
+ printf ("# best fit: Var = %g + %g Mean\n", intercept, slope);
+ printf ("# Gain: %g \t read out variance: %g\n",slope,intercept/slope/slope);
+ /* close file */
+ H5Fclose (file_id);
+
+ return 0;
+}
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-shell" id="orgsrcblock8">gcc -W -g -o wlstsq_CCD_calibration wlstsq_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-shell" id="orgsrcblock9">./wlstsq_CCD_calibration
+</pre>
+</div>
+
+<pre class="example">
+# best fit: Var = 5.76432 + 0.142805 Mean
+# Gain: 0.142805         read out variance: 282.658
+</pre>
+</div>
+</div>
 </div>
 <div id="postamble" class="status">
 <p class="date">Date: <span class="timestamp-wrapper"><span class="timestamp">&lt;2016-05-16 lun.&gt;</span></span></p>
 <p class="author">Author: Christophe Pouzat</p>
-<p class="date">Created: 2016-05-16 lun. 22:34</p>
+<p class="date">Created: 2016-05-16 lun. 23:55</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>
 </body>

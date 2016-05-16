@@ -134,3 +134,80 @@ It is then used in combination with the [[http://www.gnu.org/software/plotutils/
 #+RESULTS: mean_var_CCD_calibration-use2
 [[file:VvsM.png]]
 
+* Weighted least-square fit of the Variance versus the Mean
+
+The =C= code doing the job is an extension of the previous one:
+
+#+NAME: wlstsq_CCD_calibration-definition
+#+BEGIN_SRC C :tangle wlstsq_CCD_calibration.c
+#include <string.h>
+#include <stdio.h>
+#include <gsl/gsl_statistics.h>
+#include <gsl/gsl_fit.h>
+#include <hdf5.h>
+#include <hdf5_hl.h>
+
+#define FILE        "CCD_calibration.hdf5"
+#define RANK 3
+#define N1 60
+#define N2 80
+#define N3 100
+
+char *dsetnames[]={"/10ms/stack","/20ms/stack","/30ms/stack","/40ms/stack","/50ms/stack",
+		   "/60ms/stack","/70ms/stack","/80ms/stack","/90ms/stack","/100ms/stack"};
+ 
+int main( void )
+{
+ /* open file from ex_lite1.c */
+ hid_t file_id = H5Fopen (FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
+ int rank = RANK;
+ hsize_t dims[RANK] = {N1,N2,N3};
+ int n_elt = N1*N2*N3;
+ int data[n_elt];
+ double mean[N1*N2*10];
+ double var[N1*N2*10];
+ size_t r_idx=0;
+ for (int dset_idx=0; dset_idx < 10; dset_idx++) {
+   /* read dataset */
+   H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
+   for (size_t i=0; i < N1; i++) {
+     for (size_t j=0; j < N2; j++) {
+       double data_dbl[N3];
+       for (size_t k=0; k < N3; k++) data_dbl[k] = (double) data[N2*N3*i+N3*j+k];
+       mean[r_idx] = gsl_stats_mean(data_dbl,1,N3);
+       var[r_idx] = gsl_stats_variance_m(data_dbl,1,N3,mean[r_idx]);
+       r_idx++;
+     }
+   }
+ }
+ double w[N1*N2*10];
+ for (int i=0; i < N1*N2*10; i++) w[i] = 1/var[i];
+ double intercept,slope,sigma_intercept,sigma_cross,sigma_slope,chisq;
+ gsl_fit_wlinear (mean, 1, w, 1, var, 1, N1*N2*10, 
+		  &intercept, &slope, &sigma_intercept, &sigma_cross, &sigma_slope, 
+		  &chisq);
+ printf ("# best fit: Var = %g + %g Mean\n", intercept, slope);
+ printf ("# Gain: %g \t read out variance: %g\n",slope,intercept/slope/slope);
+ /* close file */
+ H5Fclose (file_id);
+
+ return 0;
+}
+#+END_SRC
+
+#+NAME: wlstsq_CCD_calibration-compilation
+#+BEGIN_SRC shell
+gcc -W -g -o wlstsq_CCD_calibration wlstsq_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
+#+END_SRC
+
+#+RESULTS: wlstsq_CCD_calibration-compilation
+
+#+NAME: wlstsq_CCD_calibration-use
+#+BEGIN_SRC shell :exports both :results output
+./wlstsq_CCD_calibration
+#+END_SRC
+
+#+RESULTS: wlstsq_CCD_calibration-use
+: # best fit: Var = 5.76432 + 0.142805 Mean
+: # Gain: 0.142805 	 read out variance: 282.658
+
