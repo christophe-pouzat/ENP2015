@@ -1,0 +1,136 @@
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:nil arch:headline
+#+OPTIONS: author:t c:nil creator:nil d:(not "LOGBOOK") date:t e:t
+#+OPTIONS: email:nil f:t inline:t num:t p:nil pri:nil prop:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
+#+TITLE: The analysis in =C=
+#+DATE: <2016-05-16 lun.>
+#+AUTHOR: Christophe Pouzat
+#+EMAIL: christophe.pouzat@parisdescartes.fr
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+#+EXCLUDE_TAGS: noexport
+#+CREATOR: Emacs 24.5.1 (Org mode 8.3.4)
+
+* Introduction
+
+The idea here is to perform the analysis using a mixture of =C= code and basic =POSIX= functions like the =graph= of the [[https://www.gnu.org/software/plotutils/][plotutils]] package.
+
+** Getting the data
+
+The data we are going to use as illustrations were recorded by Andreas Pippow [[http://cecad.uni-koeln.de/Prof-Peter-Kloppenburg.82.0.html][Kloppenburg Lab, University of Cologne]] and are freely available in [[http://www.hdfgroup.org/HDF5/][HDF5]] format at the following URLs:
++ [[http://xtof.disque.math.cnrs.fr/data/CCD_calibration.hdf5]] for the calibration data.
++ [[http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5]] for the POMC data.  
+
+We download them to our local hard-drive with:
+
+#+NAME: download-data-to-disk
+#+BEGIN_SRC shell 
+wge http://xtof.disque.math.cnrs.fr/data/CCD_calibration.hdf5
+wget http://xtof.disque.math.cnrs.fr/data/Data_POMC.hdf5
+#+END_SRC
+
+The data sets can then be quickly inspected and (partly) plotted with [[https://www.hdfgroup.org/products/java/hdfview/][HDFView]], a =JAVA= utility. They can also be explored using few command line functions that come with the =hdf5 library=:
+
+#+NAME: list-CCD_calibration.hdf5-1
+#+BEGIN_SRC shell :exports both
+h5ls CCD_calibration.hdf5
+#+END_SRC
+
+#+RESULTS: list-CCD_calibration.hdf5-1
+| 100ms | Group |
+| 10ms  | Group |
+| 20ms  | Group |
+| 30ms  | Group |
+| 40ms  | Group |
+| 50ms  | Group |
+| 60ms  | Group |
+| 70ms  | Group |
+| 80ms  | Group |
+| 90ms  | Group |
+
+We see that the =CCD_calibration.hdf5= file contains 10 groups corresponding to each of the 10 exposure times (from 10 to 100 ms). Let us look more closely at the "10ms" group:
+
+#+NAME: list-CCD_calibration.hdf5-2
+#+BEGIN_SRC shell :exports both
+h5ls CCD_calibration.hdf5/10ms
+#+END_SRC
+
+#+RESULTS: list-CCD_calibration.hdf5-2
+| stack | Dataset | {60,  | 80, | 100} |
+| time  | Dataset | {100} |     |      |
+
+This group like all the others contains two data sets, =stack= (the stack of 100 images taken by the 60 x 80 CCD chip) and =time= (the vector containing the onset time of each exposure).
+
+* Getting the =mean= and =variance= of each pixel for each exposure time
+
+We use the functions of the [[http://www.gnu.org/software/gsl/][GSL]] (/Gnu Scientific Library/) for all the "non trivial" computations. The =C= code doing the job and outputing its results to =stdout= (the standard output) is:
+
+#+NAME: mean_var_CCD_calibration-definition
+#+BEGIN_SRC C :tangle mean_var_CCD_calibration.c
+#include <string.h>
+#include <stdio.h>
+#include <gsl/gsl_statistics.h>
+#include <hdf5.h>
+#include <hdf5_hl.h>
+
+#define FILE        "CCD_calibration.hdf5"
+
+char *dsetnames[]={"/10ms/stack","/20ms/stack","/30ms/stack","/40ms/stack","/50ms/stack",
+		   "/60ms/stack","/70ms/stack","/80ms/stack","/90ms/stack","/100ms/stack"};
+ 
+int main( void )
+{
+ /* open file from ex_lite1.c */
+ hid_t file_id = H5Fopen (FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
+
+ for (int dset_idx=0; dset_idx < 10; dset_idx++) {
+   /* read dataset */
+   int rank;
+   H5LTget_dataset_ndims(file_id,dsetnames[dset_idx],&rank);
+   hsize_t dims[rank];
+   H5LTget_dataset_info(file_id,dsetnames[dset_idx],dims,NULL,NULL);
+   int n_elt = 1;
+   for (int i=0; i < rank; i++) n_elt *= dims[i]; 
+   int data[n_elt];
+   H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
+   for (size_t i=0; i < dims[0]; i++) {
+     for (size_t j=0; j < dims[1]; j++) {
+       double data_dbl[dims[2]];
+       for (size_t k=0; k < dims[2]; k++) data_dbl[k] = (double) data[dims[1]*dims[2]*i+dims[2]*j+k];
+       double mean = gsl_stats_mean(data_dbl,1,dims[2]);
+       double var = gsl_stats_variance_m(data_dbl,1,dims[2],mean);
+       printf("%g \t %g \n",mean,var);
+     }
+   }
+ }
+ /* close file */
+ H5Fclose (file_id);
+
+ return 0;
+}
+#+END_SRC 
+
+This code is compiled with (assuming that the =LD_LIBRARY_PATH= variable is properly set):
+
+#+NAME: mean_var_CCD_calibration-compilation
+#+BEGIN_SRC shell
+gcc -W -g -o mean_var_CCD_calibration mean_var_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
+#+END_SRC
+
+It is then used in combination with the [[http://www.gnu.org/software/plotutils/manual/en/html_node/graph.html#graph][graph]] function:
+
+#+NAME: mean_var_CCD_calibration-use
+#+BEGIN_SRC shell
+./mean_var_CCD_calibration | graph -T X -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance"
+#+END_SRC
+
+#+RESULTS: #+NAME: mean_var_CCD_calibration-use
+
+#+NAME: mean_var_CCD_calibration-use2
+#+BEGIN_SRC shell :exports results :results file :file VvsM.png
+./mean_var_CCD_calibration | graph -T png -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance" > VvsM.png
+#+END_SRC
+
+#+RESULTS: mean_var_CCD_calibration-use2
+[[file:VvsM.png]]
+
