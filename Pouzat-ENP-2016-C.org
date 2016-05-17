@@ -2,7 +2,7 @@
 #+OPTIONS: author:t c:nil creator:nil d:(not "LOGBOOK") date:t e:t
 #+OPTIONS: email:nil f:t inline:t num:t p:nil pri:nil prop:nil stat:t
 #+OPTIONS: tags:t tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
-#+TITLE: The analysis in =C=
+#+TITLE: The analysis in C
 #+DATE: <2016-05-16 lun.>
 #+AUTHOR: Christophe Pouzat
 #+EMAIL: christophe.pouzat@parisdescartes.fr
@@ -141,7 +141,9 @@ int main( void )
      for (size_t j=0; j < dims[1]; j++) {
        double mean,var;
        mean_and_var(data, i, dims[1], j, dims[2], &mean, &var);
-       printf("%g \t %g \n",mean,var);
+       /*printf("%g \t %g \n",mean,var);*/
+       fwrite(&mean,sizeof(double),1,stdout);
+       fwrite(&var,sizeof(double),1,stdout);
      }
    }
  }
@@ -165,13 +167,13 @@ It is then used in combination with the [[http://www.gnu.org/software/plotutils/
 
 #+NAME: mean_var_CCD_calibration-use
 #+BEGIN_SRC shell :results silent
-./mean_var_CCD_calibration | graph -T X -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance"
+./mean_var_CCD_calibration | graph -T X -m 0 -I d -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance"
 #+END_SRC
 
 
 #+NAME: mean_var_CCD_calibration-use2
 #+BEGIN_SRC shell :exports results :results file :file VvsM.png
-./mean_var_CCD_calibration | graph -T png -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance" > VvsM.png
+./mean_var_CCD_calibration | graph -T png -m 0 -I d -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance" > VvsM.png
 #+END_SRC
 
 #+RESULTS: mean_var_CCD_calibration-use2
