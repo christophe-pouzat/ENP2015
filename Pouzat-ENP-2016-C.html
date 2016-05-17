@@ -3,7 +3,7 @@
 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-<!-- 2016-05-16 lun. 23:55 -->
+<!-- 2016-05-17 mar. 14:13 -->
 <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta  name="viewport" content="width=device-width, initial-scale=1" />
 <title>The analysis in <code>C</code></title>
@@ -153,8 +153,13 @@ for the JavaScript code in this tag.
 <li><a href="#orgheadline1">1.1. Getting the data</a></li>
 </ul>
 </li>
-<li><a href="#orgheadline3">2. Getting the <code>mean</code> and <code>variance</code> of each pixel for each exposure time</a></li>
-<li><a href="#orgheadline4">3. Weighted least-square fit of the Variance versus the Mean</a></li>
+<li><a href="#orgheadline5">2. Getting the <code>mean</code> and <code>variance</code> of each pixel for each exposure time</a>
+<ul>
+<li><a href="#orgheadline3">2.1. A remark on the code presentation</a></li>
+<li><a href="#orgheadline4">2.2. The code</a></li>
+</ul>
+</li>
+<li><a href="#orgheadline6">3. Weighted least-square fit of the Variance versus the Mean</a></li>
 </ul>
 </div>
 </div>
@@ -310,47 +315,113 @@ This group like all the others contains two data sets, <code>stack</code> (the s
 </div>
 </div>
 
-<div id="outline-container-orgheadline3" class="outline-2">
-<h2 id="orgheadline3"><span class="section-number-2">2</span> Getting the <code>mean</code> and <code>variance</code> of each pixel for each exposure time</h2>
+<div id="outline-container-orgheadline5" class="outline-2">
+<h2 id="orgheadline5"><span class="section-number-2">2</span> Getting the <code>mean</code> and <code>variance</code> of each pixel for each exposure time</h2>
 <div class="outline-text-2" id="text-2">
+</div><div id="outline-container-orgheadline3" class="outline-3">
+<h3 id="orgheadline3"><span class="section-number-3">2.1</span> A remark on the code presentation</h3>
+<div class="outline-text-3" id="text-2-1">
 <p>
-We use the functions of the <a href="http://www.gnu.org/software/gsl/">GSL</a> (<i>Gnu Scientific Library</i>) for all the "non trivial" computations. The <code>C</code> code doing the job and outputing its results to <code>stdout</code> (the standard output) is:
+The <a href="https://en.wikipedia.org/wiki/Literate_programming">literate programming</a> approach is used here. This means that the code is broken into "manageable" pieces that are individually explained, they are then pasted together to give the code that will actually get compiled. These manageable pieces are called blocs and each bloc gets a name like: <code>&lt;&lt;name-of-the-bloc&gt;&gt;</code> upon definition. It is then referred to by this name when used in subsequent codes. See Schulte, Davison, Dye and Dominik (2010) <a href="https://www.jstatsoft.org/article/view/v046i03">A Multi-Language Computing Environment for Literate Programming and Reproducible Research </a>for further explanations.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgheadline4" class="outline-3">
+<h3 id="orgheadline4"><span class="section-number-3">2.2</span> The code</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+We use the functions of the <a href="http://www.gnu.org/software/gsl/">GSL</a> (<i>Gnu Scientific Library</i>) for all the "non trivial" computations. The <code>C</code> code doing the job will output its results to <code>stdout</code> (the standard output). This code will have to work on individual stacks of images. For each exposure time, this image stack must be read from the data file. We write next the few lines of codes allocating the necessary memory and populating it with the image stack data. The following pre-defined variables appear in this code (<code>&lt;&lt;read-image-stack&gt;&gt;</code>):
+</p>
+<ul class="org-ul">
+<li><code>file_id</code> (hid_t): the stream to the <code>HDF5</code> data file.</li>
+<li><code>dsetnames</code> (vector of strings): the names of the data sets to analyze.</li>
+<li><code>dset_idx</code> (int): the index of the data set.</li>
+</ul>
+
+<div class="org-src-container">
+
+<pre class="src src-C" id="orgsrcblock4">/* read dataset */
+int rank;
+H5LTget_dataset_ndims(file_id,dsetnames[dset_idx],&amp;rank);
+hsize_t dims[rank];
+H5LTget_dataset_info(file_id,dsetnames[dset_idx],dims,NULL,NULL);
+int n_elt = 1;
+for (int i=0; i &lt; rank; i++) n_elt *= dims[i]; 
+int data[n_elt];
+H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
+</pre>
+</div>
+
+<p>
+After opening the <code>HDF5</code> file containing the data set, our code must extract the stack collected at each exposure duration and for each of the 60 x 80 pixels of the chip the <code>mean</code> and <code>variance</code> computed over the successive exposures are obtained. So we start by defining a function that takes:
+</p>
+
+<ul class="org-ul">
+<li><code>data</code> (int *): a pointer to one stack (containing integers).</li>
+<li><code>row_idx</code> (size_t): the row index of the pixel.</li>
+<li><code>dim_1</code> (size_t): the number of columns of the stack of images.</li>
+<li><code>col_idx</code> (size_t): the column index of the pixel.</li>
+<li><code>dim_2</code> (size_t): the number of images of the stack of images.</li>
+<li><code>mean</code> (double *): a pointer to the computed mean.</li>
+<li><code>var</code> (double *): a pointer to the computed variance.</li>
+</ul>
+<p>
+The function returns 0 is everything goes fine. The definition of bloc <code>&lt;&lt;mean_and_var&gt;&gt;</code> follows:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-C" id="orgsrcblock4">#include &lt;string.h&gt;
+<pre class="src src-C" id="orgsrcblock5">int mean_and_var(int data[], size_t row_idx, size_t dim_1, size_t col_idx, size_t dim_2, 
+		 double *mean, double *var ) {
+  double data_dbl[dim_2];
+  for (size_t k=0; k &lt; dim_2; k++) data_dbl[k] = (double) data[dim_1*dim_2*row_idx+dim_2*col_idx+k];
+  *mean = gsl_stats_mean(data_dbl,1,dim_2);
+  *var = gsl_stats_variance_m(data_dbl,1,dim_2,*mean);
+  return 0;
+}
+</pre>
+</div>
+
+<p>
+The header of our file is here (<code>&lt;&lt;mean_var_CCD_calibration-header&gt;&gt;</code>):
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C" id="orgsrcblock6">#include &lt;string.h&gt;
 #include &lt;stdio.h&gt;
 #include &lt;gsl/gsl_statistics.h&gt;
 #include &lt;hdf5.h&gt;
 #include &lt;hdf5_hl.h&gt;
+</pre>
+</div>
 
+<p>
+And the <code>main</code> function definition becomes:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C" id="orgsrcblock7">&lt;&lt;mean_var_CCD_calibration-header&gt;&gt;
 #define FILE        "CCD_calibration.hdf5"
 
 char *dsetnames[]={"/10ms/stack","/20ms/stack","/30ms/stack","/40ms/stack","/50ms/stack",
 		   "/60ms/stack","/70ms/stack","/80ms/stack","/90ms/stack","/100ms/stack"};
- 
+
+&lt;&lt;mean_and_var&gt;&gt;
+
 int main( void )
 {
  /* open file from ex_lite1.c */
  hid_t file_id = H5Fopen (FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
 
  for (int dset_idx=0; dset_idx &lt; 10; dset_idx++) {
-   /* read dataset */
-   int rank;
-   H5LTget_dataset_ndims(file_id,dsetnames[dset_idx],&amp;rank);
-   hsize_t dims[rank];
-   H5LTget_dataset_info(file_id,dsetnames[dset_idx],dims,NULL,NULL);
-   int n_elt = 1;
-   for (int i=0; i &lt; rank; i++) n_elt *= dims[i]; 
-   int data[n_elt];
-   H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
+   &lt;&lt;read-image-stack&gt;&gt;
    for (size_t i=0; i &lt; dims[0]; i++) {
      for (size_t j=0; j &lt; dims[1]; j++) {
-       double data_dbl[dims[2]];
-       for (size_t k=0; k &lt; dims[2]; k++) data_dbl[k] = (double) data[dims[1]*dims[2]*i+dims[2]*j+k];
-       double mean = gsl_stats_mean(data_dbl,1,dims[2]);
-       double var = gsl_stats_variance_m(data_dbl,1,dims[2],mean);
+       double mean,var;
+       mean_and_var(data, i, dims[1], j, dims[2], &amp;mean, &amp;var);
        printf("%g \t %g \n",mean,var);
      }
    }
@@ -364,24 +435,25 @@ int main( void )
 </div>
 
 <p>
-This code is compiled with (assuming that the <code>LD_LIBRARY_PATH</code> variable is properly set):
+The code is saved in a file named <code>mean_var_CCD_calibration.c</code> and  is compiled with (assuming that the <code>LD_LIBRARY_PATH</code> variable is properly set):
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-shell" id="orgsrcblock5">gcc -W -g -o mean_var_CCD_calibration mean_var_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
+<pre class="src src-shell" id="orgsrcblock8">gcc -W -g -o mean_var_CCD_calibration mean_var_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
 </pre>
 </div>
 
 <p>
-It is then used in combination with the <a href="http://www.gnu.org/software/plotutils/manual/en/html_node/graph.html#graph">graph</a> function:
+It is then used in combination with the <a href="http://www.gnu.org/software/plotutils/manual/en/html_node/graph.html#graph">graph</a> function to give:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-shell" id="orgsrcblock6">./mean_var_CCD_calibration | graph -T X -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance"
+<pre class="src src-shell" id="orgsrcblock9">./mean_var_CCD_calibration | graph -T X -m 0 -L "Variance vs Mean (calibration data set)" -X "Mean (ADU)" -Y "Variance"
 </pre>
 </div>
+
 
 
 <div class="figure">
@@ -390,64 +462,77 @@ It is then used in combination with the <a href="http://www.gnu.org/software/plo
 </div>
 </div>
 </div>
+</div>
 
-<div id="outline-container-orgheadline4" class="outline-2">
-<h2 id="orgheadline4"><span class="section-number-2">3</span> Weighted least-square fit of the Variance versus the Mean</h2>
+<div id="outline-container-orgheadline6" class="outline-2">
+<h2 id="orgheadline6"><span class="section-number-2">3</span> Weighted least-square fit of the Variance versus the Mean</h2>
 <div class="outline-text-2" id="text-3">
 <p>
-The <code>C</code> code doing the job is an extension of the previous one:
+The <code>C</code> code doing the job is defined in blocks as before. The header (<code>&lt;&lt;wlstsq_CCD_calibration-header&gt;&gt;</code>) is slightly different since we need <code>gsl_fit</code>:
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-C" id="orgsrcblock7">#include &lt;string.h&gt;
+<pre class="src src-C" id="orgsrcblock10">#include &lt;string.h&gt;
 #include &lt;stdio.h&gt;
 #include &lt;gsl/gsl_statistics.h&gt;
 #include &lt;gsl/gsl_fit.h&gt;
 #include &lt;hdf5.h&gt;
 #include &lt;hdf5_hl.h&gt;
+</pre>
+</div>
 
+<p>
+Then the <code>main</code> function containing file looks like the previous one. Function <code>mean_and_var</code> is used again. Two vectors <code>mean</code> and <code>var</code> containing the mean and variance at each pixel for each exposure time are affected first. Then a vector <code>w</code> containing the <i>weights</i> (inverse of the variance) is affected and a weighted least square fit is performed with function <a href="http://www.gnu.org/software/gsl/manual/html_node/Linear-regression-with-a-constant-term.html#Linear-regression-with-a-constant-term">gsl_fit_wlinear</a>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C" id="orgsrcblock11">&lt;&lt;wlstsq_CCD_calibration-header&gt;&gt;
 #define FILE        "CCD_calibration.hdf5"
 #define RANK 3
-#define N1 60
-#define N2 80
-#define N3 100
+#define N0 60
+#define N1 80
+#define N2 100
 
 char *dsetnames[]={"/10ms/stack","/20ms/stack","/30ms/stack","/40ms/stack","/50ms/stack",
 		   "/60ms/stack","/70ms/stack","/80ms/stack","/90ms/stack","/100ms/stack"};
  
+&lt;&lt;mean_and_var&gt;&gt;
+
 int main( void )
 {
- /* open file from ex_lite1.c */
  hid_t file_id = H5Fopen (FILE, H5F_ACC_RDONLY, H5P_DEFAULT);
  int rank = RANK;
- hsize_t dims[RANK] = {N1,N2,N3};
- int n_elt = N1*N2*N3;
+ hsize_t dims[RANK] = {N0,N1,N2};
+ int n_elt = N0*N1*N2;
  int data[n_elt];
- double mean[N1*N2*10];
- double var[N1*N2*10];
+ double mean[N0*N1*10];
+ double var[N0*N1*10];
  size_t r_idx=0;
  for (int dset_idx=0; dset_idx &lt; 10; dset_idx++) {
    /* read dataset */
    H5LTread_dataset_int(file_id,dsetnames[dset_idx],data);
-   for (size_t i=0; i &lt; N1; i++) {
-     for (size_t j=0; j &lt; N2; j++) {
-       double data_dbl[N3];
-       for (size_t k=0; k &lt; N3; k++) data_dbl[k] = (double) data[N2*N3*i+N3*j+k];
-       mean[r_idx] = gsl_stats_mean(data_dbl,1,N3);
-       var[r_idx] = gsl_stats_variance_m(data_dbl,1,N3,mean[r_idx]);
+   for (size_t i=0; i &lt; N0; i++) {
+     for (size_t j=0; j &lt; N1; j++) {
+       mean_and_var(data, i, N1, j, N2, &amp;mean[r_idx], &amp;var[r_idx]);
        r_idx++;
      }
    }
  }
- double w[N1*N2*10];
- for (int i=0; i &lt; N1*N2*10; i++) w[i] = 1/var[i];
+ double w[N0*N1*10];
+ for (int i=0; i &lt; N0*N1*10; i++) w[i] = 1/var[i];
  double intercept,slope,sigma_intercept,sigma_cross,sigma_slope,chisq;
- gsl_fit_wlinear (mean, 1, w, 1, var, 1, N1*N2*10, 
+ gsl_fit_wlinear (mean, 1, w, 1, var, 1, N0*N1*10, 
 		  &amp;intercept, &amp;slope, &amp;sigma_intercept, &amp;sigma_cross, &amp;sigma_slope, 
 		  &amp;chisq);
- printf ("# best fit: Var = %g + %g Mean\n", intercept, slope);
- printf ("# Gain: %g \t read out variance: %g\n",slope,intercept/slope/slope);
+ printf ("# best fit: Var = %g + %g * Mean\n", intercept, slope);
+ printf ("# covariance matrix:\n");
+ printf ("# [ %g, %g\n#   %g, %g]\n", 
+	 sigma_intercept, sigma_cross, sigma_cross, sigma_slope);
+ printf ("# chisq = %g\n", chisq);
+ printf ("# degrees of freedom = %d\n\n", N0*N1*10-3);
+ printf ("# gain: %g \n# read-out-variance: %g\n",slope,intercept/slope/slope);
  /* close file */
  H5Fclose (file_id);
 
@@ -456,21 +541,36 @@ int main( void )
 </pre>
 </div>
 
+<p>
+The code is saved in a file named <code>wlstsq_CCD_calibration.c</code> and  is compiled with:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-shell" id="orgsrcblock8">gcc -W -g -o wlstsq_CCD_calibration wlstsq_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
+<pre class="src src-shell" id="orgsrcblock12">gcc -W -g -o wlstsq_CCD_calibration wlstsq_CCD_calibration.c -lhdf5 -lhdf5_hl -lgsl -lgslcblas -lm
 </pre>
 </div>
 
+<p>
+It is simply used with:
+</p>
+
 <div class="org-src-container">
 
-<pre class="src src-shell" id="orgsrcblock9">./wlstsq_CCD_calibration
+<pre class="src src-shell" id="orgsrcblock13">./wlstsq_CCD_calibration
 </pre>
 </div>
 
 <pre class="example">
-# best fit: Var = 5.76432 + 0.142805 Mean
-# Gain: 0.142805         read out variance: 282.658
+# best fit: Var = 5.76432 + 0.142805 * Mean
+# covariance matrix:
+# [ 0.0111791, -5.38295e-06
+#   -5.38295e-06, 4.06825e-09]
+# chisq = 301438
+# degrees of freedom = 47997
+
+# gain: 0.142805 
+# read-out-variance: 282.658
 </pre>
 </div>
 </div>
@@ -478,7 +578,7 @@ int main( void )
 <div id="postamble" class="status">
 <p class="date">Date: <span class="timestamp-wrapper"><span class="timestamp">&lt;2016-05-16 lun.&gt;</span></span></p>
 <p class="author">Author: Christophe Pouzat</p>
-<p class="date">Created: 2016-05-16 lun. 23:55</p>
+<p class="date">Created: 2016-05-17 mar. 14:13</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>
 </body>
