@@ -230,7 +230,7 @@ int main( void )
    }
  }
  double w[N0*N1*10];
- for (int i=0; i < N0*N1*10; i++) w[i] = 1/var[i];
+ for (int i=0; i < N0*N1*10; i++) w[i] = (N2-1)/var[i]/var[i]/2.0;
  double intercept,slope,sigma_intercept,sigma_cross,sigma_slope,chisq;
  gsl_fit_wlinear (mean, 1, w, 1, var, 1, N0*N1*10, 
 		  &intercept, &slope, &sigma_intercept, &sigma_cross, &sigma_slope, 
@@ -266,13 +266,13 @@ It is simply used with:
 #+END_SRC
 
 #+RESULTS: wlstsq_CCD_calibration-use
-: # best fit: Var = 5.76432 + 0.142805 * Mean
+: # best fit: Var = 5.61141 + 0.139838 * Mean
 : # covariance matrix:
-: # [ 0.0111791, -5.38295e-06
-: #   -5.38295e-06, 4.06825e-09]
-: # chisq = 301438
+: # [ 0.02125, -1.57125e-05
+: #   -1.57125e-05, 2.05361e-08]
+: # chisq = 49764.5
 : # degrees of freedom = 47997
 : 
-: # gain: 0.142805 
-: # read-out-variance: 282.658
+: # gain: 0.139838 
+: # read-out-variance: 286.959
 
